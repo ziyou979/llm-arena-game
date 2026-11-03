@@ -1,0 +1,9 @@
+[
+ {"id":1,"tool":"act","args":{"habits":{"potion_at":0.35,"flee_at":0.2,"fight_back":true}},"why":"习惯默认全关，开战前先设喝药/逃跑/还手阈值，然后再 wait_for_event 等开战"},
+ {"id":2,"tool":"act","args":{"keep":true},"why":"委托距 162 只剩 37s 去不了；淘金热让领地收入翻倍，当前计划正好在占 18，不用改"},
+ {"id":3,"tool":"act","args":{"plan":[{"type":"buy","item":"weapon"},{"type":"buy","item":"armor"},{"type":"recruit","p":12,"n":1,"messenger":true},{"type":"hunt","p":12,"n":10}],"thought":"3 块地正是收益最高点，中盘不扩张，420 金换装备补守卫，回 12 刷怪"},"why":"中盘守 2–3 块最优，钱拿去买装备和补守卫，终盘再扩张"},
+ {"id":4,"tool":"act","args":{"plan":[{"type":"capture","p":11},{"type":"recruit","p":11,"n":2,"messenger":true},{"type":"capture","p":16},{"type":"recruit","p":16,"n":2,"messenger":true},{"type":"zone"}],"thought":"剩 210s 维护费无所谓，每块地终场 200 分，就近拿 11 和 16 追第一"},"why":"终盘扩张：附近空地 15–18s，落后 78 分，多一块地就能反超；圈外的 13 放手"},
+ {"id":5,"tool":"act","args":{"plan":[{"type":"defend","p":7},{"type":"recruit","p":7,"n":2,"messenger":true},{"type":"hunt","p":6,"n":10}],"thought":"7 号地无守卫正被野怪抢，12s 就到，回防后补两名守卫再回 6 刷怪"},"why":"离得近（12s<28s），一块地 200 分值得回防，并补齐守卫"},
+ {"id":6,"tool":"act","args":{"plan":[{"type":"town","npc":"inn"}],"thought":"只剩 20 血没药，GLM 满血就在 10 格外，进城回满血，城里也在圈心","say":"先撤了"},"why":"残血无药，势均力敌对手贴脸，死一次丢 30% 金币，进城最安全且顺便躲毒"},
+ {"id":7,"tool":"act","args":{"plan":[{"type":"zone"},{"type":"town","npc":"inn"}],"thought":"人在圈外每秒掉 9 血，目标 3 也在圈外，先进圈回血，再挑圈内的地"},"why":"毒圈掉血先在计划最前面放 zone，并放弃圈外目标 3"}
+]

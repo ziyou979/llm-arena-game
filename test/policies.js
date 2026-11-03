@@ -12,6 +12,12 @@ var POL={};
    const h=nearestPlot(a,p=>p.lv<=Math.max(1,a.lvl)&&!outZone({x:p.cx,y:p.cy},3))||plots.find(p=>p.lv==1);plan.push({t:'hunt',p:h.id,n:4});a.plan=plan},
   // 一句话策略 + 守家：同上，但自己的地没守卫且有钱就招 2 个
   simpleG:(a,ev)=>{P.simple(a,ev);const mine=plots.filter(p=>p.owner==a.id&&hires(p).length<2);if(mine.length&&a.gold>=GCOST*2+10)a.plan.unshift({t:'recruit',p:mine[0].id,n:2})},
+  // 守家 + 控制规模：中盘最多 3 块（维护费拐点）
+  simpleG3:(a,ev)=>{const n=plots.filter(p=>p.owner==a.id).length;P.simpleG(a,ev);if(n>=3)a.plan=a.plan.filter(c=>c.t!='capture')},
+  // 同上 + 终盘冲刺：620 秒后不再招守卫，连占离城最近的空地（来袭要 90 秒才收得走）
+  simpleGL:(a,ev)=>{if(time<620)return P.simpleG3(a,ev);allocate(a);a.pending.length=0;const C={x:H,y:H};
+   const ps=plots.filter(p=>p.owner!=a.id&&!a.allies.has(p.owner)&&p.lv<=a.lvl+1).sort((p,q)=>dist(C,{x:p.cx,y:p.cy})-dist(C,{x:q.cx,y:q.cy})).slice(0,3);
+   a.plan=ps.map(p=>({t:'capture',p:p.id,bribe:true}));if(!a.plan.length)a.plan=[{t:'zone'}]},
   // 随机：从合法指令里乱选
   rand:(a,ev)=>{allocate(a);a.pending.length=0;const ps=plots.filter(p=>!outZone({x:p.cx,y:p.cy},2));const pk=()=>ps[Math.floor(R()*ps.length)]||plots[0];const opts=[()=>({t:'hunt',p:pk().id,n:4}),()=>({t:'capture',p:pk().id}),()=>({t:'buy',item:pick(['weapon','armor','potion','helmet'])}),()=>({t:'town',k:pick(['inn','tavern','smith'])})];a.plan=[0,1,2].map(()=>pick(opts)())}
  };

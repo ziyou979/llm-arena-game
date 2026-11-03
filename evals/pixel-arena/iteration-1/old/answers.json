@@ -1,0 +1,9 @@
+[
+  {"id":1,"tool":"act","args":{"habits":{"potion_at":0.35,"flee_at":0.2,"fight_back":true}},"why":"手册开局第 5 步必做：先设定喝药/逃跑/还手习惯，之后再 wait_for_event 等开战。"},
+  {"id":2,"tool":"act","args":{"keep":true},"why":"委托距 162 只剩 37s 赶不上，淘金热期间领地收入翻倍，原计划占 18 招守卫正好，保持不变。"},
+  {"id":3,"tool":"act","args":{"plan":[{"type":"capture","p":9,"bribe":true},{"type":"recruit","p":9,"n":2,"messenger":true}],"thought":"金币420够用，第4块地+200分远超维护费，拿最近的9号再招守卫"},"why":"领地是得分大头，4 块地仍净收入为正，钱多就扩张最近的空地并立刻招守卫。"},
+  {"id":4,"tool":"act","args":{"plan":[{"type":"capture","p":11,"bribe":true},{"type":"recruit","p":11,"n":2,"messenger":true},{"type":"zone"}],"thought":"落后78分，再拿一块近中心的11号地就能反超，占完招守卫进圈"},"why":"13 号快丢在圈外，抢 15s 外的 11 号 +200 分可翻盘，再进圈应对 60s 后的收缩。"},
+  {"id":5,"tool":"act","args":{"plan":[{"type":"defend","p":7},{"type":"recruit","p":7,"n":2,"messenger":true},{"type":"hunt","p":6,"n":3}],"thought":"7号地野怪来袭只剩28秒，先回防打掉野怪，再招两名守卫防再丢"},"why":"无守卫的 7 号即将失守，回防保住 200 分，金 90 够招 2 名守卫。"},
+  {"id":6,"tool":"act","args":{"plan":[{"type":"zone"},{"type":"town","npc":"inn"},{"type":"buy","item":"potion"}],"thought":"血只剩20又没药，对面GLM满血，别刷怪了，进圈回城旅店回满再买药"},"why":"残血无药不能打也不能刷怪，城墙内安全且在圈内，先回满血。"},
+  {"id":7,"tool":"act","args":{"plan":[{"type":"zone"}],"thought":"圈外每秒掉9血，3号地也在圈外，放弃占领先进安全圈"},"why":"⚠ 提示目标在圈外，引擎不会替我进圈，立刻 zone 并放弃 3 号。"}
+]

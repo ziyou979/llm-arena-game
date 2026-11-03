@@ -52,7 +52,7 @@ const CMD_ITEM={type:'object',required:['type'],properties:{type:{type:'string',
  skill:{type:'string',enum:['fireball','charge','heal']},npc:{type:'string',enum:['tavern','smith','inn','temple','guild']},upgrade:{type:'boolean'},bribe:{type:'boolean'},messenger:{type:'boolean'}}};
 const TOOLS=[
  {name:'get_rules',description:'读规则和全部指令说明。开局先读一次。',inputSchema:{type:'object',properties:{}}},
- {name:'get_manual',description:'读完整选手手册（服务器上的最新版 skill）：规则、主循环、指令、打法、常见错误。part=sprite 拿形象绘制规范，part=template 拿形象模板 JSON。本地 skill 和这里不一致时以这里为准。',inputSchema:{type:'object',properties:{part:{type:'string',enum:['all','sprite','template']}}}},
+ {name:'get_manual',description:'读完整选手手册（服务器上的最新版 skill）：规则、主循环、指令、打法、常见错误。part=rules 完整规则和数字，part=connect 接入与安装，part=troubleshooting 报错处理，part=sprite 形象绘制规范，part=template 形象模板 JSON。本地 skill 和这里不一致时以这里为准。',inputSchema:{type:'object',properties:{part:{type:'string',enum:['all','sprite','template']}}}},
  {name:'join',description:'接入你的座位，并可设置在直播里显示的名字（比如你的模型名）。',inputSchema:{type:'object',properties:{name:{type:'string',description:'显示名，最多 24 字'}}}},
  {name:'setup_character',description:'开战前设置角色：30 点属性和武器，可选提交像素形象 JSON（pixel-arena-sprite/1，见游戏页「绘制规范」）。',inputSchema:{type:'object',required:['stats','weapon'],properties:{stats:{type:'array',items:{type:'integer'},description:'[力量,敏捷,体质,智力,魅力,感知]，每项 1-10，总和 30'},weapon:{type:'string',enum:['sword','staff','bow','dagger']},sprite:{type:'object'},spritePath:{type:'string',description:'本机上形象 JSON 文件的路径（代替内联 sprite，省 token）'},name:{type:'string'},motto:{type:'string',description:'一句口号，显示在大厅'}}}},
  {name:'situation',description:'战况简报：一段整理好的文字，含毒圈、自己、视野内对手（标好可打/危险）、可占领地、空投委托、排名和 5×5 小地图。想了解全局时用它，不要自己写脚本去拼。',inputSchema:{type:'object',properties:{}}},
@@ -140,7 +140,7 @@ function skillFiles(){const out=[];(function walk(d,rel){for(const f of fs.readd
 function skillManifest(){const files=skillFiles(),h=crypto.createHash('sha1');const list=files.map(f=>{const b=fs.readFileSync(path.join(SKILL_DIR,f));const fh=crypto.createHash('sha1').update(b).digest('hex');h.update(f+'\0'+fh+'\n');return{path:f,sha1:fh,bytes:b.length}});return{name:'pixel-arena',version:h.digest('hex').slice(0,12),files:list}}
 function skillVersion(){try{return skillManifest().version}catch(e){return null}}
 function manual(part){const rd=f=>fs.readFileSync(path.join(SKILL_DIR,f),'utf8');
- if(part=='sprite')return rd('reference/sprite-spec.md');if(part=='template')return rd('reference/sprite-template.json');
+ if(part=='sprite')return rd('reference/sprite-spec.md');if(part=='template')return rd('reference/sprite-template.json');if(part&&/^[a-z-]+$/.test(part)&&fs.existsSync(path.join(SKILL_DIR,'reference',part+'.md')))return rd('reference/'+part+'.md');
  const body=rd('SKILL.md').replace(/^---[\s\S]*?---\n/,'');return '（选手手册 · 版本 '+skillVersion()+'，以这份为准）\n'+body+'\n\n## 附：服务器规则原文\n'+RULES}
 // 各 harness 的用户级 skill 目录（2026-11 查官方文档/源码）：根目录存在才装，避免给没装的工具建目录
 // ~/.agents/skills：Codex 官方用户目录，MiniMax Code 也扫；~/.qoder/skills：Qoder；~/.gemini/config/skills：Antigravity；
