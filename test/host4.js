@@ -1,0 +1,14 @@
+const fs=require('fs');
+const html=fs.readFileSync(__dirname+'/../arena.html','utf8');
+const sprites=html.match(/<script[^>]*id="spritesJSON"[^>]*>([\s\S]*?)<\/script>/)[1];
+const scripts=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m=>m[1]);
+const H=fs.readFileSync('/workspace/work/arena-demo/harness.js','utf8').split('\n');(0,eval)(H[4]);
+global.els={};
+global.document={getElementById:id=>id=='spritesJSON'?{textContent:sprites}:(els[id]||(els[id]=stub())),createElement:()=>stub(),querySelectorAll:()=>[],querySelector:()=>stub(),addEventListener(){},body:stub()};
+global.window=global;global.addEventListener=()=>{};global.requestAnimationFrame=()=>0;global.innerWidth=400;global.innerHeight=800;global.devicePixelRatio=1;global.localStorage={getItem:()=>null,setItem(){}};global.matchMedia=()=>({matches:false,addEventListener(){}});global.Image=function(){return stub()};
+window.ARENA_BRIDGE='http://127.0.0.1:8799';
+let code=scripts.join('\n')+'\n'+fs.readFileSync(__dirname+'/../bridge.js','utf8').replace('setInterval(panel,2000);','window.__bridge={OPS,obs,seatsSummary};setInterval(panel,2000);')+'\n;globalThis.__E={step:s=>step(s),go:()=>go(),st:()=>({time,over,started}),logs:()=>logs,agents:()=>agents};';
+(0,eval)(code);
+setTimeout(()=>{[0,2,3,5,6,7].forEach((s,k)=>addSim(s,[0,2,3,5,6,7][k],''));__E.go();console.log('GO',__E.agents().map(a=>a.name+'#'+a.seat).join(','));const iv=setInterval(()=>{for(let i=0;i<(+process.env.STEPS||5);i++)__E.step(.1);const s=__E.st();if(s.over||s.time>+process.env.TL){clearInterval(iv);
+ const L=__E.logs().filter(l=>/💬|⌛|无效|🔌|⛔|🎯/.test(l.txt)).slice(0,80);console.log(L.map(l=>l.txt).reverse().join('\n'));
+ console.log(JSON.stringify(__bridge.seatsSummary()));process.exit(0)}},50)},+process.env.WAIT||4000);
