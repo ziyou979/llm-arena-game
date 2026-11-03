@@ -460,7 +460,7 @@ function spawnMon(lv,x,y,guard){const hp=Math.round(18*Math.pow(lv,1.45));mons.p
 function randIn(p){for(let k=0;k<60;k++){const x=ri(p.x0,p.x1),y=ri(p.y0,p.y1);if(walk(x,y)&&map[y][x]!=4&&!(x>=TOWN.x0-2&&x<=TOWN.x1+2&&y>=TOWN.y0-2&&y<=TOWN.y1+2))return{x,y}}return{x:Math.round(p.cx),y:Math.round(p.cy)}}
 function plotAt(x,y){x=Math.round(x);y=Math.round(y);if(x>=TOWN.x0&&x<=TOWN.x1&&y>=TOWN.y0&&y<=TOWN.y1)return null;if(x>=2*PS&&x<3*PS&&y>=2*PS&&y<3*PS)return null;return plots.find(p=>x>=p.x0&&x<=p.x1&&y>=p.y0&&y<=p.y1)}
 const inBush=e=>{const x=Math.round(e.x),y=Math.round(e.y);return map[y]&&map[y][x]==6};
-function init(){seed=(Math.random()*1e9)|0;R=rng(seed);genMap();mons=[];npcs=[];fx=[];parts=[];projs=[];chests=[];meteors=[];logs=[];time=0;over=false;event=null;vote=null;nextVote=70;nextDrop=55;bounty=-1;nextB=40;
+function init(){DIRS={acc:0,since:-99,manualT:-99,pd:{},once:{},feat:{}};seed=(Math.random()*1e9)|0;R=rng(seed);genMap();mons=[];npcs=[];fx=[];parts=[];projs=[];chests=[];meteors=[];logs=[];time=0;over=false;event=null;vote=null;nextVote=70;nextDrop=55;bounty=-1;nextB=40;
  zone={cx:CX+rnd(-3,3),cy:CX+rnd(-3,3),r:236,r0:236,r1:15,t0:300,t1:810,warned:false};
  agents=MODELS.map(newAgent);
  LAIRS=[];plots.forEach(p=>{const g=randIn(p);spawnMon(Math.min(5,p.lv+1),g.x,g.y,p.id);
@@ -481,7 +481,21 @@ let logDirty=false;
 function log(cls,txt){logs.unshift({cls,txt:'['+fmt(time)+'] '+txt});if(logs.length>100)logs.pop();logDirty=true}
 const fmt=s=>{s=Math.max(0,s);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0')};
 function say(a,t){a.thoughts.unshift(t);if(a.thoughts.length>4)a.thoughts.pop()}
-function director(x,y,label,pri){if(!DIRECTOR)return;if(focus&&focus.pri>pri&&focus.t>0)return;focus={x,y,label,t:6,pri}}
+function director(x,y,label,pri,e){if(!DIRECTOR)return;if(focus&&focus.pri>pri&&focus.t>0)return;focus={x,y,label,t:6,pri,e:e||null}}
+// 自动导播：提前切到快要出事的地方；没事时按看点轮换跟拍，每人至少 10 秒；手动点选手卡后 30 秒内不自动切
+let DIRS={acc:0,since:-99,manualT:-99,pd:{},once:{},feat:{}};
+function dirOnce(k,gap){if(time-(DIRS.once[k]??-999)<gap)return false;DIRS.once[k]=time;return true}
+function directorTick(dt){if(!DIRECTOR||!started||over)return;DIRS.acc+=dt;if(DIRS.acc<.5)return;DIRS.acc=0;
+ const live=agents.filter(a=>!a.dead);
+ for(let i=0;i<live.length;i++)for(let j=i+1;j<live.length;j++){const a=live[i],b=live[j];if(a.allies.has(b.id)||inTownE(a)||inTownE(b))continue;const d=dist(a,b),k=a.id*16+b.id,pv=DIRS.pd[k];DIRS.pd[k]=d;
+  if(d<7&&pv!=null&&pv-d>.25&&dirOnce('pair'+k,25)){const m={x:(a.x+b.x)/2,y:(a.y+b.y)/2};director(m.x,m.y,'对峙：'+a.name+' vs '+b.name,3);selId=a.id}}
+ for(const p of plots)if(p.capBy>=0&&p.prog>=4&&dirOnce('cap'+p.id+'_'+p.capBy,20)){const c=agents[p.capBy];director(p.cx,p.cy,c.name+' 快拿下'+p.name+(p.owner>=0?'（'+agents[p.owner].name+'的）':''),3,c)}
+ for(const a of live)if(a.hp/a.maxhp<.3&&(a.hit>0||mons.some(m=>!m.dead&&m.angry==a.id))&&dirOnce('low'+a.id,25))director(a.x,a.y,'残血：'+a.name,3,a);
+ if(focus&&focus.t>0)return;if(time-DIRS.manualT<30||time-DIRS.since<10||!live.length)return;
+ const sc=a=>{let s=0,e=99;for(const b of live)if(b!==a&&!a.allies.has(b.id))e=Math.min(e,dist(a,b));s+=Math.max(0,12-e)*1.5;
+  if(plots.some(p=>p.capBy==a.id&&p.prog>0))s+=6;s+=(1-a.hp/a.maxhp)*4;if(a.thinking)s+=1.5;s+=Math.min(8,(time-(DIRS.feat[a.id]??-60))/15);if(a.id==selId)s+=2;return s};
+ let best=live[0],bs=-1;for(const a of live){const v=sc(a);if(v>bs){bs=v;best=a}}
+ DIRS.since=time;DIRS.feat[best.id]=time;if(best.id!==selId||!FOLLOW){selId=best.id;FOLLOW=true;try{$('bFollow').classList.toggle('on',true)}catch(e){}}}
 // ---------- perception ----------
 function seeOne(a,b){const d=dist(a,b);if(inBush(b)&&d>1.5+a.st[5]*.25)return false;return d<=vis(a)}
 function sees(a,b){if(b.dead)return false;if(seeOne(a,b))return true;for(const id of a.allies){const c=agents[id];if(!c.dead&&seeOne(c,b))return true}return false}
@@ -716,7 +730,7 @@ function renderVote(){const el=document.getElementById('vote');if(!vote){el.styl
  el.querySelectorAll('button').forEach(b=>b.onclick=()=>{if(vote.mine<0){vote.mine=+b.dataset.i;vote.votes[vote.mine]+=3;renderVote()}})}
 function spawnChest(){for(let k=0;k<80;k++){const an=R()*6.28,rr=R()*Math.max(4,zone.r-4),x=Math.round(zone.cx+Math.cos(an)*rr),y=Math.round(zone.cy+Math.sin(an)*rr);
   if(walk(x,y)&&map[y][x]!=4&&map[y][x]!=6){const c={id:chests.length,x,y,opened:false,openBy:-1,prog:0,fall:1.2};chests.push(c);log('c-world','📦 空投落在 ('+x+','+y+')！先开箱的人拿史诗武器');banner2('📦 空投来了！');agents.forEach(a=>wake(a,'空投出现'));director(x,y,'空投',3);return}}}
-function step(dt){time+=dt;if(bannerT>0)bannerT-=dt;
+function step(dt){time+=dt;directorTick(dt);if(bannerT>0)bannerT-=dt;
  if(WAITALL&&agents.some(a=>a.thinking)){time-=dt;agents.forEach(a=>{if(a.thinking){a.thinkLeft-=dt;if(a.thinkLeft<=0)finishThink(a)}});const s=agents.find(a=>a.thinking);if(s){banner='世界暂停：等待 '+s.name+' 思考…';bannerT=.2}return}
  // zone
  if(time>=zone.t0){if(!zone.warned){zone.warned=true;log('c-world','☠ 毒圈开始收缩！圈外每秒掉血');banner2('☠ 毒圈开始收缩');agents.forEach(a=>wake(a,'毒圈收缩'))}zone.r=zone.r0-(zone.r0-zone.r1)*Math.min(1,(time-zone.t0)/(zone.t1-zone.t0))}
@@ -881,8 +895,8 @@ function drawBld(b){const F=(x,y,w,h,c)=>{cx.fillStyle=c;cx.fillRect(x,y,w,h)};c
  if(tmp){F(X+(W-D)/2-1,top-14,3,14,'#ffd166');F(X+(W-D)/2-5,top-10,11,3,'#ffd166')}
  const sw=b.n.length*7+6,sx=X+(W-D)/2-sw/2,sy=roofB-5;F(sx,sy,sw,10,'#3e2723');F(sx+1,sy+1,sw-2,8,'#6d4c41');cx.font='bold 7px sans-serif';cx.textAlign='center';cx.fillStyle='#ffd166';cx.fillText(b.n,X+(W-D)/2,sy+8);cx.textAlign='left'}
 function render(){const t=performance.now()/1000;
- if(focus&&focus.t>0&&DIRECTOR){focus.t-=1/60;cam.x+=(focus.x+.5-VW/2-cam.x)*.08;cam.y+=(focus.y+.5-VH/2-cam.y)*.08}
- else if(FOLLOW){const a=agents[selId];cam.x+=(a.x+.5-VW/2-cam.x)*.12;cam.y+=(a.y+.5-VH/2-cam.y)*.12}
+ {let tx=null,ty,k;if(focus&&focus.t>0&&DIRECTOR){focus.t-=1/60;const e=focus.e&&!focus.e.dead?focus.e:focus;tx=e.x;ty=e.y;k=.08}else if(FOLLOW){const a=agents[selId];tx=a.x;ty=a.y;k=.12}
+  if(tx!=null){const gx=tx+.5-VW/2,gy=ty+.5-VH/2;if(Math.abs(gx-cam.x)>VW*1.2||Math.abs(gy-cam.y)>VH*1.2){cam.x=gx;cam.y=gy}else{cam.x+=(gx-cam.x)*k;cam.y+=(gy-cam.y)*k}}}
  cam.x=Math.max(0,Math.min(N-VW,cam.x));cam.y=Math.max(0,Math.min(N-VH,cam.y));
  trauma=Math.max(0,trauma-1/60*1.6);const sh=trauma*trauma*7,shx=(Math.random()*2-1)*sh,shy=(Math.random()*2-1)*sh;
  const ox=cam.x*T,oy=cam.y*T;
@@ -945,14 +959,14 @@ function render(){const t=performance.now()/1000;
  for(const a of agents){if(a.dead)continue;if(FOG&&a.id!=selId&&!sees(sel,a)&&!sel.allies.has(a.id))continue;mx.fillStyle='#000';mx.fillRect(a.x*2-2,a.y*2-2,5,5);mx.fillStyle=a.col;mx.fillRect(a.x*2-1,a.y*2-1,3,3)}
  mx.strokeStyle='#fff';mx.lineWidth=1;mx.strokeRect(cam.x*2+.5,cam.y*2+.5,VW*2,VH*2);
  document.getElementById('banner').innerHTML=bannerT>0&&banner?'<span>'+banner+'</span>':'';
- document.getElementById('camtag').textContent=(focus&&focus.t>0&&DIRECTOR?'导播：'+focus.label:FOLLOW?'跟随：'+sel.name:'自由视角')+(FOG?' · 模型视角':'');
+ {const th=FOLLOW&&!(focus&&focus.t>0&&DIRECTOR)&&sel.thoughts&&sel.thoughts[0]?String(sel.thoughts[0]):'';document.getElementById('camtag').textContent=(focus&&focus.t>0&&DIRECTOR?'导播：'+focus.label:FOLLOW?(DIRECTOR&&time-DIRS.manualT>=30?'导播跟拍：':'跟随：')+sel.name:'自由视角')+(FOG?' · 模型视角':'')+(th?'  💭 '+(th.length>32?th.slice(0,31)+'…':th):'')}
  const zt=document.getElementById('zoneTag');if(time<zone.t0){zt.textContent='☠ 毒圈 '+fmt(zone.t0-time)+' 后收缩'+(event?' · '+event.n+' '+Math.ceil(event.t)+'s':'')}else zt.textContent='☠ 毒圈半径 '+zone.r.toFixed(0)+' 格'+(event?' · '+event.n+' '+Math.ceil(event.t)+'s':'')}
 // ---------- UI ----------
 function portraitTo(c,a){const g=c.getContext('2d');g.imageSmoothingEnabled=false;g.clearRect(0,0,c.width,c.height);g.drawImage(a.frames[0].c,0,0,34,34,0,0,c.width,c.height)}
 function buildCardPortrait(a){const d=document.getElementById('card'+a.id);if(d)portraitTo(d.querySelector('canvas'),a)}
 function buildCards(){const c=document.getElementById('cards');c.innerHTML='';agents.forEach(a=>{const d=document.createElement('div');d.className='card';d.id='card'+a.id;
  d.innerHTML='<div class="hd"><canvas width="34" height="34"></canvas><div><div class="nm" title="'+a.name+'" style="color:'+a.col+'">'+a.name+'</div><span class="tag"></span></div></div><div class="bar"><i></i></div><div class="mini"></div><span class="pill"></span>';
- d.onclick=()=>{selId=a.id;setFollow(true);focus=null;ui()};c.appendChild(d);buildCardPortrait(a)})}
+ d.onclick=()=>{selId=a.id;setFollow(true);focus=null;DIRS.manualT=time;ui()};c.appendChild(d);buildCardPortrait(a)})}
 function ui(){agents.forEach(a=>{const d=document.getElementById('card'+a.id);d.classList.toggle('sel',a.id==selId);
  d.querySelector('.bar i').style.cssText='width:'+(Math.max(0,a.hp)/a.maxhp*100)+'%;background:'+(a.hp/a.maxhp>.35?'#4caf50':'#e53935');
  const ter=plots.filter(p=>p.owner==a.id).length,gd=mons.filter(m=>m.hire&&m.owner==a.id&&!m.dead&&!m.gone).length;
