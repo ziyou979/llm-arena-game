@@ -31,10 +31,10 @@ const RULES=`像素竞技场：最多 8 个 AI 在 320×320 的像素地图上�
 得分 = 领地数×200 + 金币÷4 + 击杀×80。地图 5×5 格，每格 64×64：正中一格是城镇（城墙内是安全区，不能打架）和郊外村落（不属于任何人）；其余 24 块是领地（id 0-23；紧挨中心的 8 块是 1 级，外圈 12 块 2 级，4 个角 3 级）。房子、篱笆、水和树挡路。毒圈 300 秒开始收缩、810 秒收到城区附近，圈外持续掉血。
 你只能看到自己视野内的东西（视野 = 5 + 感知×1.2 格），盟友共享视野。结盟必须当面谈：先 pact 走到对方身边，对方当场答应或拒绝。
 你下的是高层指令，走路、寻路和执行指令由引擎负责，引擎不替你做判断：喝药、撤退、被打还手都要用 act{habits} 自己设阈值（默认全关）。一份计划最多 5 条，按顺序执行，执行完会叫醒你。
-观察里有：自己的状态、视野内的选手/野怪/行商（含距离 dist）、你对其他人最后一次看到的位置、全部空投、24 块领地（主人、建议等级 suggestedLvl、距离）、公告板委托、价格、毒圈、记分板、inbox（视野内别人说的话）。别人的 thought 你看不到。
+观察里有：自己的状态、视野内的选手/野怪/行商（含距离 dist）、你对其他人最后一次看到的位置、全部空投、24 块领地（主人、等级 lv、距离）、公告板委托、价格、毒圈、记分板、inbox（视野内别人说的话）。别人的 thought 你看不到。
 一条指令写错只会跳过那一条，返回 errors 告诉你哪里错。wait_for_event/observe 加 brief=true 可拿精简观察。
-毒圈：zone 里有 distToEdge（正数=在圈内离边缘多远）、secondsUntilOutside、dps（圈外每秒掉血）、secondsToDieOutside、secondsToSafety；领地有 travelSec（走过去的秒数）。圈外时引擎会在你当前步骤前插一条「进圈」（不占 5 条配额、不重跑已完成的步骤）。
-循环：wait_for_event → 读 observation → act（必要时 allocate_points / answer_pact / talk）→ 再 wait_for_event，直到 over=true。目标领地已在毒圈外时，引擎会跳过 capture/hunt 那一步并叫醒你。被叫醒但不想改计划时用 act{keep:true} 结束这一轮；把原计划原样再交一遍会从第一步重新开始。超过 90 秒（真实时间，不受倍速影响）不回应算一次超时：引擎不会替你决策，你的角色继续执行原计划，计划跑完就原地发呆，直到你下一次 act。阵亡期间也可以 act，计划会保存到复活后执行。手上计划没跑完时，公告板委托、世界事件这类纯信息不会叫醒你，会在下次叫醒时一起给你。
+毒圈：zone 里有 distToEdge（正数=在圈内离边缘多远）、secondsUntilOutside、dps（圈外每秒掉血）、secondsToDieOutside、secondsToSafety；领地有 travelSec（走过去的秒数）。引擎不会替你进圈：人在圈外或目标领地在圈外时只会叫醒你。
+循环：wait_for_event → 读 observation → act（必要时 allocate_points / answer_pact / talk）→ 再 wait_for_event，直到 over=true。被叫醒但不想改计划时用 act{keep:true} 结束这一轮；把原计划原样再交一遍会从第一步重新开始。超过 180 秒（真实时间，不受倍速影响）不回应算一次超时：引擎不会替你决策，你的角色继续执行原计划，计划跑完就原地发呆，直到你下一次 act。阵亡期间也可以 act，计划会保存到复活后执行。手上计划没跑完时，公告板委托、世界事件这类纯信息不会叫醒你，会在下次叫醒时一起给你。
 指令（act.plan 的每一项，type 必填）：
  hunt{p,n}  去领地 p 打 n 只野怪攒经验金币
  capture{p,bribe?}  占领领地 p；有守卫时 bribe=true 花钱收买，false 强攻。占下的地没守卫、你又不在场，60 秒后会有野怪来抢（30 秒内回去打退即可）；持有多块地要付递增的维护费，n 块每 5 秒付 n×(n−1) 金
@@ -55,7 +55,7 @@ const TOOLS=[
  {name:'get_manual',description:'读完整选手手册（服务器上的最新版 skill）：规则、主循环、指令、打法、常见错误。part=rules 完整规则和数字，part=connect 接入与安装，part=troubleshooting 报错处理，part=sprite 形象绘制规范，part=template 形象模板 JSON。本地 skill 和这里不一致时以这里为准。',inputSchema:{type:'object',properties:{part:{type:'string',enum:['all','sprite','template']}}}},
  {name:'join',description:'接入你的座位，并可设置在直播里显示的名字（比如你的模型名）。',inputSchema:{type:'object',properties:{name:{type:'string',description:'显示名，最多 24 字'}}}},
  {name:'setup_character',description:'开战前设置角色：30 点属性和武器，可选提交像素形象 JSON（pixel-arena-sprite/1，见游戏页「绘制规范」）。',inputSchema:{type:'object',required:['stats','weapon'],properties:{stats:{type:'array',items:{type:'integer'},description:'[力量,敏捷,体质,智力,魅力,感知]，每项 1-10，总和 30'},weapon:{type:'string',enum:['sword','staff','bow','dagger']},sprite:{type:'object'},spritePath:{type:'string',description:'本机上形象 JSON 文件的路径（代替内联 sprite，省 token）'},name:{type:'string'},motto:{type:'string',description:'一句口号，显示在大厅'}}}},
- {name:'situation',description:'战况简报：一段整理好的文字，含毒圈、自己、视野内对手（标好可打/危险）、可占领地、空投委托、排名和 5×5 小地图。想了解全局时用它，不要自己写脚本去拼。',inputSchema:{type:'object',properties:{}}},
+ {name:'situation',description:'战况简报：一段整理好的文字，含毒圈、自己、视野内对手（含相对你的战力倍数）、空领地、空投委托、排名和 5×5 小地图。想了解全局时用它。',inputSchema:{type:'object',properties:{}}},
  {name:'observe',description:'立即返回你现在能看到的一切（不等待）。brief=true 返回精简版。',inputSchema:{type:'object',properties:{format:{type:'string',enum:['json','report'],description:'report=返回战况简报文字（同 situation）'},brief:{type:'boolean',description:'精简：领地只回自己的和最近的几块，去掉价格表，日志和野怪截短'}}}},
  {name:'wait_for_event',description:'等到有事需要你决策（开局、发现对手、挨打、计划完成、空投、有人找你结盟或说话等）再返回观察结果；超时也返回。这是主循环。推荐 format=report：直接拿到战况简报文字。',inputSchema:{type:'object',properties:{format:{type:'string',enum:['json','report'],description:'report=返回战况简报文字，最省 token；json=原始观察'},timeout_seconds:{type:'integer',description:'默认 25，最多 50'},brief:{type:'boolean',description:'精简观察，大约省一半以上 token'}}}},
  {name:'act',description:'提交新计划（最多 5 条，替换当前计划）；keep=true 表示不改计划、只结束这一轮决策。可附带内心想法 thought（显示在直播日志）和一句台词 say（头顶气泡，附近选手能听到）。',inputSchema:{type:'object',properties:{keep:{type:'boolean',description:'true=保留当前计划，只结束这一轮（被叫醒但不想改计划时用）'},plan:{type:'array',items:CMD_ITEM,maxItems:5},loop:{type:'boolean',description:'true=计划执行完自动从头再来，不叫醒你（适合刷怪、守地）'},habits:{type:'object',description:'战斗习惯（引擎不替你做决定，只按这里的阈值执行；默认全关）。potion_at：血量低于这个比例自动喝药水/放治疗；flee_at：低于这个比例撤回主城；fight_back：被选手或野怪打时自动还手。可以和 keep:true 一起用',properties:{potion_at:{type:'number',minimum:0,maximum:0.9},flee_at:{type:'number',minimum:0,maximum:0.9},fight_back:{type:'boolean'}}},thought:{type:'string'},say:{type:'string'}}}},

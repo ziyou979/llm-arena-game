@@ -109,7 +109,7 @@ function obs(a){const D=(x,y)=>Math.round(Math.hypot(x-a.x,y-a.y));const REC={1:
   worldEvent:event?{name:event.n,desc:event.d,secondsLeft:Math.round(event.t)}:null,bountyOn:bounty>=0?agents[bounty].name:null,
   visibleAgents:vAg,lastSeen,visibleMonsters:vM,merchants:vMer,
   chests:chests.filter(c=>!c.opened).map(c=>({id:c.id,x:c.x,y:c.y,dist:D(c.x,c.y)})),
-  plots:plots.map(p=>({id:p.id,name:p.name,lv:p.lv,suggestedLvl:REC[p.lv],dist:D(p.cx,p.cy),travelSec:Math.round(D(p.cx,p.cy)/spd(a)),owner:p.owner,ownerName:p.owner>=0?agents[p.owner].name:null,cx:r1(p.cx),cy:r1(p.cy),unguardedLeft:p.owner==a.id&&!hires(p).length&&!raidMons(p).length?Math.max(0,Math.round(RAID_IDLE-(p.idle||0))):null,raidLeft:p.owner==a.id&&raidMons(p).length?Math.max(0,Math.round(RAID_TAKE-(p.raidT||0))):null,myGuards:p.owner==a.id?hires(p).length:undefined})),
+  plots:plots.map(p=>({id:p.id,name:p.name,lv:p.lv,dist:D(p.cx,p.cy),travelSec:Math.round(D(p.cx,p.cy)/spd(a)),owner:p.owner,ownerName:p.owner>=0?agents[p.owner].name:null,cx:r1(p.cx),cy:r1(p.cy),unguardedLeft:p.owner==a.id&&!hires(p).length&&!raidMons(p).length?Math.max(0,Math.round(RAID_IDLE-(p.idle||0))):null,raidLeft:p.owner==a.id&&raidMons(p).length?Math.max(0,Math.round(RAID_TAKE-(p.raidT||0))):null,myGuards:p.owner==a.id?hires(p).length:undefined})),
   quests:QUESTS.filter(q=>!q.done&&time<q.until).map(q=>({id:q.id,target:LAIRS[q.lair].name,plot:LAIRS[q.lair].plot,x:LAIRS[q.lair].x,y:LAIRS[q.lair].y,reward:q.reward,dist:D(LAIRS[q.lair].x,LAIRS[q.lair].y),secondsLeft:Math.round(q.until-time)})),
   prices:{potion:price(a,'potion'),weapon:price(a,'weapon'),armor:price(a,'armor'),helmet:price(a,'helmet'),
    skills:Object.fromEntries(Object.entries(SKILLS).map(([k,s])=>[k,price(a,'',s.p)])),guard:GCOST,bribeGuard:bribeCost(a),
@@ -241,17 +241,16 @@ function report(o,a){if(!o||o.lobby){const s=o||{};return '【大厅】还没开
  for(const m of ib)L.push('💬 '+(m.ally?'[盟友密语] ':m.toYou?'[对你说] ':'')+'#'+m.from+' '+m.name+'（'+m.t+'s）：'+m.text+(m.n>1?' ×'+m.n:''));
  const ag=o.visibleAgents||[];
  if(ag.length){L.push('视野内选手：');for(const b of ag.sort((x,y)=>x.dist-y.dist)){const r=me.power?b.power/me.power:9;
-   const tag=b.ally?'盟友':b.inTown?'城内（不能打）':r<.75?'可打':r<1.1?'势均力敌':r<1.5?'危险':'快跑';
-   L.push('  #'+b.id+' '+b.name+' Lv'+b.lvl+' '+WN[b.weapon]+' HP '+b.hp+'/'+b.maxhp+' 战力 '+b.power+'（你的 '+r.toFixed(2)+' 倍）距 '+b.dist+' → '+tag+(b.betrayer?' ⚠背叛过':''))}}
+   const tag=b.ally?' · 盟友':b.inTown?' · 在城内（不能打）':'';
+   L.push('  #'+b.id+' '+b.name+' Lv'+b.lvl+' '+WN[b.weapon]+' HP '+b.hp+'/'+b.maxhp+' 战力 '+b.power+'（你的 '+r.toFixed(2)+' 倍）距 '+b.dist+tag+(b.betrayer?' ⚠背叛过':''))}}
  const ls=o.lastSeen||[];if(ls.length)L.push('最后见到：'+ls.sort((x,y)=>x.secondsAgo-y.secondsAgo).slice(0,5).map(s=>'#'+s.id+' '+s.name+' ('+s.x+','+s.y+') '+s.secondsAgo+'s 前').join('；'));
  const pl=o.plots||[],mine=pl.filter(p=>p.owner==me.id);
  {const H=habOf(a);L.push('习惯：喝药/治疗 '+(H.potion?'血<'+Math.round(H.potion*100)+'%':'关')+' ｜ 撤退 '+(H.flee?'血<'+Math.round(H.flee*100)+'%':'关')+' ｜ 被打还手 '+(H.fightBack?'开':'关')+((!H.potion&&!H.flee&&!H.fightBack)?'（全关：引擎不会替你喝药、逃跑或还手，用 act{habits} 设定）':''))}
  if(mine.length){const n=mine.length,inc=n*4,up=upkeepOf(n);L.push('领地收支（每 5 秒）：收入 '+inc+' − 维护费 '+up+' = '+(inc-up>=0?'+':'')+(inc-up)+' 金'+(n>=4?'（再多一块：维护费变 '+upkeepOf(n+1)+'）':''))}
  if(mine.length)L.push('我的领地：'+mine.map(p=>p.id+'（'+p.lv+'级，守卫 '+P(p.myGuards)+(p.raidLeft!=null?'，⚠ 野怪来袭中，'+p.raidLeft+'s 内不回来就失守':p.unguardedLeft!=null?'，无人看守 '+p.unguardedLeft+'s 后野怪来袭':'')+'，'+p.travelSec+'s'+(time>=zone.t0-30&&Math.hypot(p.cx-z.cx,p.cy-z.cy)>z.r-4?'，圈外':'')+'）').join('；'));
  const free=pl.filter(p=>p.owner<0).sort((x,y)=>x.travelSec-y.travelSec);
- const ok=free.filter(p=>p.suggestedLvl<=me.lvl+1),hard=free.filter(p=>p.suggestedLvl>me.lvl+1);
  const zt=p=>time>=zone.t0-30&&!inZ(p)?'，圈外':'';
- L.push('空领地（够等级的，按路程）：'+(ok.slice(0,5).map(p=>p.id+'（'+p.lv+'级，'+p.travelSec+'s'+zt(p)+'）').join('；')||'无')+(hard.length?' ｜ 等级不够：'+hard.slice(0,3).map(p=>p.id+'（建议Lv'+p.suggestedLvl+'）').join('、'):''));
+ L.push('空领地（按路程）：'+(free.slice(0,6).map(p=>p.id+'（'+p.lv+'级，'+p.travelSec+'s'+zt(p)+'）').join('；')||'无'));
  const foe=pl.filter(p=>p.owner>=0&&p.owner!=me.id).sort((x,y)=>x.travelSec-y.travelSec);
  if(foe.length)L.push('别人的领地（最近）：'+foe.slice(0,4).map(p=>p.id+'←#'+p.owner+(me.allies.includes(p.owner)?'盟':'')+'（'+p.lv+'级，'+p.travelSec+'s'+zt(p)+'）').join('；'));
  const ch=o.chests||[];if(ch.length)L.push('📦 空投（史诗武器）：'+ch.sort((x,y)=>x.dist-y.dist).map(c=>'#'+c.id+' 距 '+c.dist).join('；'));
