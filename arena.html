@@ -215,8 +215,8 @@ textarea{width:100%;height:140px;background:var(--sunk);color:var(--text);border
 "use strict";
 const N=320,PS=64,G=5,H=160,T=16,SC=2,DT=0.1,MATCH=900;
 const ZOOMS=[[15,17,'近'],[22,24,'中'],[32,35,'远'],[48,52,'超远']];let zi=0,VW=15,VH=17;
-const cv=document.getElementById('cv'),cx=cv.getContext('2d');
-const mc=document.getElementById('mini'),mx=mc.getContext('2d');
+let cv=document.getElementById('cv'),cx=cv.getContext('2d');
+let mc=document.getElementById('mini'),mx=mc.getContext('2d');
 let TOWNNPC={},LAIRS=[],QUESTS=[],TRAINER,MER=[],R,seed,map,bg,miniBg,plots,agents,mons,npcs,fx,parts,projs,chests,meteors,logs,time,speed=1,paused=false,selId=0,over=false,started=false;
 let DPM=6,WAITALL=false,FOG=false,FOLLOW=true,DIRECTOR=true,VOTE=true,banner='',bannerT=0,cam={x:20,y:20},focus=null,trauma=0;
 let nextB=40,zone,event=null,vote=null,nextVote=70,nextDrop=55,bounty=-1,bountyAmt=0;
@@ -1015,4 +1015,5 @@ function loop(now){const d=Math.min(.1,(now-last)/1000);last=now;if(!paused){acc
  render();uiT+=d;if(uiT>.25){uiT=0;ui()}requestAnimationFrame(loop)}
 init();requestAnimationFrame(loop);
 window.__sim=s=>{for(let i=0;i<s/DT;i++)step(DT)};
-</script></body></html>
+</script><script src="replay.js"></script>
+</body></html>

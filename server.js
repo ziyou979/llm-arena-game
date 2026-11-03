@@ -220,6 +220,7 @@ http.createServer(async(req,res)=>{const u=new URL(req.url,'http://x');
  if(req.method=='OPTIONS')return send(res,204,'');
  if(u.pathname=='/'||u.pathname=='/index.html')return send(res,200,page(),'text/html; charset=utf-8');
  if(u.pathname=='/bridge.js')return send(res,200,fs.readFileSync(path.join(DIR,'bridge.js'),'utf8'),'text/javascript; charset=utf-8');
+ if(u.pathname=='/replay.js')return send(res,200,fs.readFileSync(path.join(DIR,'replay.js'),'utf8'),'text/javascript; charset=utf-8');
  if(u.pathname=='/bridge/poll'&&req.method=='POST'){const b=await readBody(req);return onPoll(req,res,b)}
  if(u.pathname=='/bridge/reply'&&req.method=='POST'){const b=await readBody(req);lastPoll=Date.now();for(const r of b.replies||[]){const w=waiters.get(r.rid);if(w){clearTimeout(w.t);waiters.delete(r.rid);w.resolve(r.res)}}return send(res,200,{ok:true})}
  if(u.pathname=='/skill/manifest.json')return send(res,200,skillManifest());
