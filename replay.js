@@ -67,7 +67,7 @@ function enter(data){if(!data||data.v!==VER||!data.snaps||data.snaps.length<2)th
  ['intro','endOv'].forEach(i=>{const e=document.getElementById(i);if(e&&e.style)e.style.display='none'});
  try{buildCards()}catch(e){}
  RP={d:data,t:data.snaps[0].t,end:data.snaps[data.snaps.length-1].t,play:true,speed:1,pov:-1,fog:true,last:performance.now(),li:-1,rec:null,multi:null};
- bar(true);apply(RP.t);setPov(-1)}
+ bar(true);apply(RP.t);setPov(-1);try{document.getElementById('rpBar').scrollIntoView({block:'nearest'})}catch(e){}}
 function apply(t){const S=RP.d.snaps,i=bs(S,t),s=S[i],n=S[Math.min(i+1,S.length-1)],k=n.t>s.t?Math.max(0,Math.min(1,(t-s.t)/(n.t-s.t))):0;
  time=t;
  agents.forEach((a,j)=>{const d=s.A[j],e=n.A[j];AK.forEach((k2,q)=>a[k2]=d.p[q]);a.dead=d.p[AK.indexOf('dead')];a.allies=new Set(d.al);a.bub=d.bub?Object.assign({},d.bub):null;a.st=d.st.slice();a.items=Object.assign({},d.it);a.skills={};if(d.sk)for(const k2 of d.sk.split(','))a.skills[k2]=1;
@@ -90,7 +90,11 @@ function apply(t){const S=RP.d.snaps,i=bs(S,t),s=S[i],n=S[Math.min(i+1,S.length-
  const lg=RP.d.logs;let hi=lg.length;{let lo=0,h=lg.length;while(lo<h){const md=(lo+h)>>1;if(lg[md][0]<=t)lo=md+1;else h=md}hi=lo}
  if(hi!==RP.li){RP.li=hi;logs=lg.slice(Math.max(0,hi-100),hi).reverse().map(r=>({cls:r[1],txt:r[2]}));logDirty=true}}
 function setPov(p){RP.pov=p;focus=null;DIRECTOR=false;if(p<0){FOLLOW=false;FOG=false}else{selId=p;FOLLOW=true;FOG=RP.fog;const a=agents[p];cam.x=a.x-VW/2;cam.y=a.y-VH/2}
- const s=document.getElementById('rpPov');if(s)s.value=String(p);try{ui()}catch(e){}}
+ const s=document.getElementById('rpPov');if(s)s.value=String(p);
+ try{const f=document.getElementById('bFollow');f.classList.toggle('on',FOLLOW);const d=document.getElementById('bDir');d.classList.toggle('on',p<0);const g=document.getElementById('bFog');g.textContent=FOG?'模型视角':'上帝视角';g.classList.toggle('on',FOG)}catch(e){}
+ try{ui()}catch(e){}}
+// 回放里点右侧选手卡、点画面上的选手、按「跟随」：都当作切到该选手视角；关掉跟随回到导播
+function syncPov(){if(RP.multi&&RP.multi.on)return;if(RP.pov<0){if(FOLLOW)setPov(selId)}else if(!FOLLOW)setPov(-1);else if(selId!==RP.pov)setPov(selId)}
 function overlay(g,c,label){g.setTransform(1,0,0,1,0,0);const W=c.width,H=c.height;g.font='bold 22px sans-serif';g.textBaseline='top';
  const L2=[label,'剩余 '+mmss(RP.d.match-time)+(event?' · '+event.n:'')];let y=12;
  for(const s of L2){const w=g.measureText(s).width;g.fillStyle='rgba(0,0,0,.55)';g.fillRect(10,y-4,w+16,30);g.fillStyle='#fff';g.fillText(s,18,y);y+=34}
@@ -110,7 +114,7 @@ render=function(){if(!RP)return _render();
   cv=sv.cv;cx=sv.cx;mc=sv.mc;mx=sv.mx;cam=sv.cam;selId=sv.selId;FOG=sv.FOG;FOLLOW=sv.FOLLOW;trauma=sv.trauma}}
  // 同时导出时主画面降到每秒约 6 帧，把算力留给导出
  if(RP.multi&&RP.multi.on&&(RP.fc=(RP.fc||0)+1)%10)return tick();
- camFor(RP.pov);_render();if(RP.rec)overlay(cx,cv,povLabel(RP.pov));tick()};
+ syncPov();camFor(RP.pov);_render();if(RP.rec)overlay(cx,cv,povLabel(RP.pov));tick()};
 function tick(){
  const sc=document.getElementById('rpSeek');if(sc&&!sc._drag){sc.value=String(RP.t)}const tl=document.getElementById('rpTime');if(tl)tl.textContent=mmss(RP.t)+' / '+mmss(RP.end)};
 
@@ -152,8 +156,9 @@ function bar(on){let d=$('rpBar');if(!on){if(d)d.style.display='none';return}
   const w=$('wrap');w.parentNode.insertBefore(d,w.nextSibling)}
  d.style.display='flex';const ro=agents.map(a=>'<option value="'+a.id+'">'+a.name+'</option>').join('');
  d.innerHTML='<b style="margin-right:4px">回放</b><button id="rpPlay">暂停</button><select id="rpSpd"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option><option value="8">8x</option></select>'+
+  '视角 <select id="rpPov"><option value="-1">导播</option>'+ro+'</select>'+
   '<input type="range" id="rpSeek" min="'+RP.t+'" max="'+RP.end+'" step="0.1" value="'+RP.t+'" style="flex:1 1 220px"><span id="rpTime" class="mini"></span>'+
-  '<span style="flex-basis:100%"></span>视角 <select id="rpPov"><option value="-1">导播</option>'+ro+'</select><label class="mini"><input type="checkbox" id="rpFog" checked> 选手视野迷雾</label>'+
+  '<span style="flex-basis:100%"></span><label class="mini"><input type="checkbox" id="rpFog" checked> 选手视野迷雾</label>'+
   '<button id="rpRec">录制当前视角</button><button id="rpSave">保存回放文件</button><button id="rpExit" class="ghost">退出回放</button>'+
   '<span style="flex-basis:100%"></span><span class="mini">同时导出：</span><span id="rpPick" class="mini"><label><input type="checkbox" value="-1" checked> 导播</label> '+agents.map(a=>'<label><input type="checkbox" value="'+a.id+'" checked> '+a.name+'</label>').join(' ')+'</span><button id="rpMulti">同时导出勾选视角</button>'+
   '<span id="rpErr" class="mini" style="flex-basis:100%;color:#ff8a80"></span><span class="mini" style="flex-basis:100%">导出按真实时间录制（1x 时 15 分钟一局要录 15 分钟），每个视角各存一个视频文件。导出期间别切走这个标签页，否则浏览器会暂停绘制。</span>';
