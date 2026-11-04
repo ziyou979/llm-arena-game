@@ -109,7 +109,7 @@ function obs(a){const D=(x,y)=>Math.round(Math.hypot(x-a.x,y-a.y));const REC={1:
   worldEvent:event?{name:event.n,desc:event.d,secondsLeft:Math.round(event.t)}:null,bountyOn:bounty>=0?agents[bounty].name:null,
   visibleAgents:vAg,lastSeen,visibleMonsters:vM,merchants:vMer,
   chests:chests.filter(c=>!c.opened).map(c=>({id:c.id,x:c.x,y:c.y,dist:D(c.x,c.y)})),
-  plots:plots.map(p=>({id:p.id,name:p.name,lv:p.lv,dist:D(p.cx,p.cy),travelSec:Math.round(D(p.cx,p.cy)/spd(a)),owner:p.owner,ownerName:p.owner>=0?agents[p.owner].name:null,cx:r1(p.cx),cy:r1(p.cy),unguardedLeft:p.owner==a.id&&!hires(p).length&&!raidMons(p).length?Math.max(0,Math.round(RAID_IDLE-(p.idle||0))):null,raidLeft:p.owner==a.id&&raidMons(p).length?Math.max(0,Math.round(RAID_TAKE-(p.raidT||0))):null,myGuards:p.owner==a.id?hires(p).length:undefined})),
+  plots:plots.map(p=>({id:p.id,name:p.name,lv:p.lv,dist:D(p.cx,p.cy),travelSec:Math.round(D(p.cx,p.cy)/spd(a)),owner:p.owner,ownerName:p.owner>=0?agents[p.owner].name:null,cx:r1(p.cx),cy:r1(p.cy),unguardedLeft:p.owner==a.id&&!hires(p).length&&!raidMons(p).length?Math.max(0,Math.round(RAID_IDLE-(p.idle||0))):null,raidLeft:p.owner==a.id&&raidMons(p).length?Math.max(0,Math.round(RAID_TAKE-(p.raidT||0))):null,guardsLeft:p.owner==a.id&&raidMons(p).length?plotGuards(p).length:null,myGuards:p.owner==a.id?hires(p).length:undefined})),
   quests:QUESTS.filter(q=>!q.done&&time<q.until).map(q=>({id:q.id,target:LAIRS[q.lair].name,plot:LAIRS[q.lair].plot,x:LAIRS[q.lair].x,y:LAIRS[q.lair].y,reward:q.reward,dist:D(LAIRS[q.lair].x,LAIRS[q.lair].y),secondsLeft:Math.round(q.until-time)})),
   prices:{potion:price(a,'potion'),weapon:price(a,'weapon'),armor:price(a,'armor'),helmet:price(a,'helmet'),
    skills:Object.fromEntries(Object.entries(SKILLS).map(([k,s])=>[k,price(a,'',s.p)])),guard:GCOST,bribeGuard:bribeCost(a),
@@ -247,7 +247,7 @@ function report(o,a){if(!o||o.lobby){const s=o||{};return '【大厅】还没开
  const pl=o.plots||[],mine=pl.filter(p=>p.owner==me.id);
  {const H=habOf(a);L.push('习惯：喝药/治疗 '+(H.potion?'血<'+Math.round(H.potion*100)+'%':'关')+' ｜ 撤退 '+(H.flee?'血<'+Math.round(H.flee*100)+'%':'关')+' ｜ 被打还手 '+(H.fightBack?'开':'关')+((!H.potion&&!H.flee&&!H.fightBack)?'（全关：引擎不会替你喝药、逃跑或还手，用 act{habits} 设定）':''))}
  if(mine.length){const n=mine.length,inc=n*4,up=upkeepOf(n);L.push('领地收支（每 5 秒）：收入 '+inc+' − 维护费 '+up+' = '+(inc-up>=0?'+':'')+(inc-up)+' 金'+(n>=4?'（再多一块：维护费变 '+upkeepOf(n+1)+'）':''))}
- if(mine.length)L.push('我的领地：'+mine.map(p=>p.id+'（'+p.lv+'级，守卫 '+P(p.myGuards)+(p.raidLeft!=null?'，⚠ 野怪来袭中，'+p.raidLeft+'s 内不回来就失守':p.unguardedLeft!=null?'，无人看守 '+p.unguardedLeft+'s 后野怪来袭':'')+'，'+p.travelSec+'s'+(time>=zone.t0-30&&Math.hypot(p.cx-z.cx,p.cy-z.cy)>z.r-4?'，圈外':'')+'）').join('；'));
+ if(mine.length)L.push('我的领地：'+mine.map(p=>p.id+'（'+p.lv+'级，守卫 '+P(p.myGuards)+(p.raidLeft!=null?'，⚠ 野怪来袭中'+(p.guardsLeft?'，守卫正在迎战（'+p.guardsLeft+' 名）':'，守卫已全灭，'+p.raidLeft+'s 内不回来就失守'):p.unguardedLeft!=null?'，无人看守 '+p.unguardedLeft+'s 后野怪来袭':'')+'，'+p.travelSec+'s'+(time>=zone.t0-30&&Math.hypot(p.cx-z.cx,p.cy-z.cy)>z.r-4?'，圈外':'')+'）').join('；'));
  const free=pl.filter(p=>p.owner<0).sort((x,y)=>x.travelSec-y.travelSec);
  const zt=p=>time>=zone.t0-30&&!inZ(p)?'，圈外':'';
  L.push('空领地（按路程）：'+(free.slice(0,6).map(p=>p.id+'（'+p.lv+'级，'+p.travelSec+'s'+zt(p)+'）').join('；')||'无'));

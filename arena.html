@@ -627,10 +627,12 @@ var STAT={talk:0,rumor:0,repair:0,upgrade:0,inn:0,bless:0,blessUsed:0,intel:0,sa
 const GCAP=8,GCOST=35,MONGOLD=3;
 // 领地经济：每块地每 5 秒产 4 金（淘金热 8）；维护费按持有数量递增，第 1 块免费，持有 n 块时每 5 秒共付 n×(n-1) 金。
 // 收入随地数线性增长，成本按平方增长：2–3 块净收入最高，5 块持平，再多就倒贴。付不起时每次欠费跑掉 1 名守卫。
-// 野怪来袭：主人不在场、也没有守卫，累计 RAID_IDLE 秒后刷 2 只来袭野怪；它们在地里待满 RAID_TAKE 秒（主人在场时暂停）就把地收回，主人回来把它们打死则来袭失败。
+// 野怪来袭：主人不在场、也没有雇佣守卫，累计 RAID_IDLE 秒后刷 2 只来袭野怪。地里的守卫（原生守卫和雇佣守卫）会和来袭野怪互相攻击；
+// 只有守卫全部阵亡、主人也不在场时才累计 RAID_TAKE 秒（守卫复活或主人在场时暂停），满了就把地收回，来袭野怪随即离开。把来袭野怪全部打死则来袭失败。
 const RAID_IDLE=60,RAID_TAKE=30,UNGUARD=RAID_IDLE+RAID_TAKE;
 const upkeepOf=n=>n*(n-1);const raidMons=p=>mons.filter(m=>m.raid==p.id&&!m.dead&&!m.gone);
 const hires=p=>mons.filter(m=>m.hire&&m.guard==p.id&&!m.dead&&!m.gone&&!m.msg);
+const plotGuards=p=>mons.filter(m=>m.guard==p.id&&m.raid==null&&!m.dead&&!m.gone&&!m.msg);
 const bribeCost=a=>Math.max(15,Math.round(32*(1-a.st[4]*.03)));
 function bribing(a,m){const c=a.plan[a.pi];return !!(c&&c.t=='capture'&&c.bribe&&c.p==m.guard&&m.angry!=a.id)}
 function friendGuard(a,m){return m.hire&&(m.owner==a.id||a.allies.has(m.owner))}const MNAMES=['行商·阿铁','行商·小药','行商·老包','行商·胡三','行商·花姐','行商·小七','行商·木头','行商·阿兰'];
@@ -752,10 +754,13 @@ function step(dt){time+=dt;directorTick(dt);if(bannerT>0)bannerT-=dt;
    if(moveTo(m,m.hx,m.hy,dt,1.6)){m.ret=0}continue}
   if(m.alarmT>0)m.alarmT-=dt;
   const ag=m.hire?4.5:2.5+m.lv*.5;let tg=null,bd=ag;if(m.alarmT>0&&m.alarm&&!m.alarm.dead&&dist(m,m.alarm)<10){tg=m.alarm;bd=dist(m,tg)}else for(const a of agents)if(!a.dead&&!inTownE(a)&&!(inBush(a)&&dist(a,m)>1.5)&&!(m.hire&&(friendGuard(a,m)||bribing(a,m)))){const d=dist(a,m);if(d<bd){bd=d;tg=a}}
+  {const foes=m.raid!=null?plotGuards(plots[m.raid]):(m.guard>=0&&!m.msg?raidMons(plots[m.guard]):null);if(foes)for(const f of foes){const d=dist(f,m);if(!tg||d<bd||!tg.lv){bd=d;tg=f}}}
+  const foe=tg&&!tg.st&&tg.lv&&(tg.raid!=null||m.raid!=null);
   if(!m.hire&&!tg)for(const n of MER)if(!n.dead){const d=dist(n,m);if(d<Math.min(bd,2.2)){bd=d;tg=n}}
   const lh=Math.hypot(m.x-m.hx,m.y-m.hy);
-  if(tg&&lh<9){if(!m.aggro){m.aggro=1;fx.push({x:m.x,y:m.y+.3,t:.6,txt:'!',c:'#ff5252',big:1})}m.face=tg.x>m.x?1:-1;
-   if(bd>1.1){const dx=tg.x-m.x,dy=tg.y-m.y,d=Math.hypot(dx,dy);const nx=m.x+dx/d*dt*2,ny=m.y+dy/d*dt*2;if(walk(Math.round(nx),Math.round(ny))){m.x=nx;m.y=ny}}
+  if(tg&&(lh<9||foe)){if(!m.aggro){m.aggro=1;fx.push({x:m.x,y:m.y+.3,t:.6,txt:'!',c:'#ff5252',big:1})}m.face=tg.x>m.x?1:-1;
+   if(bd>1.1&&foe){moveTo(m,Math.round(tg.x),Math.round(tg.y),dt,2)}
+   else if(bd>1.1){const dx=tg.x-m.x,dy=tg.y-m.y,d=Math.hypot(dx,dy);const nx=m.x+dx/d*dt*2,ny=m.y+dy/d*dt*2;if(walk(Math.round(nx),Math.round(ny))){m.x=nx;m.y=ny}}
    else if(m.cd<=0){m.atk=.2;damage(m,tg,(2+m.lv*2.6)*(evOn('blood')?1.5:1),false,{kb:.2});m.cd=1.3}}
   else{m.aggro=0;m.wt2=(m.wt2||0)-dt;const wr=m.guard>=0?1.5:m.pack!=null?2.2:4.5;
    if(lh>9||!m.wp||m.wt2<=0){if(lh>9)m.wp={x:m.hx,y:m.hy};else{m.wt2=rnd(2.5,6);if(R()<.35)m.wp=null;else{for(let k=0;k<8;k++){const x=Math.round(m.hx+rnd(-wr,wr)),y=Math.round(m.hy+rnd(-wr,wr));if(walk(x,y)&&!(x>=TOWN.x0&&x<=TOWN.x1&&y>=TOWN.y0&&y<=TOWN.y1)){m.wp={x,y};break}}}}}
@@ -788,10 +793,10 @@ function step(dt){time+=dt;directorTick(dt);if(bannerT>0)bannerT-=dt;
  for(const p of plots){const inside=agents.filter(a=>!a.dead&&plotAt(a.x,a.y)==p);
   if(p.owner>=0){p.tick=(p.tick||0)+dt;if(p.tick>=5){p.tick=0;agents[p.owner].gold+=evOn('gold')?8:4}}
   if(p.owner>=0){const o=agents[p.owner];const here=!o.dead&&plotAt(o.x,o.y)==p;const rm=raidMons(p);
-   if(rm.length){if(!here&&!hires(p).length){p.raidT=(p.raidT||0)+dt;if(p.raidT>=RAID_TAKE){log('c-cap','🐺 来袭的野怪占领了'+o.name+'的'+p.name+'，领地变回无主');rm.forEach(m=>{m.raid=null});p.owner=-1;p.idle=0;p.raidT=0;p.prog=0;p.capBy=-1;wake(o,'领地失守')}}}
-   else if(p.raidT>0){log('c-cap','🛡 '+o.name+' 打退了来袭'+p.name+'的野怪');p.raidT=0;p.idle=0}
+   if(rm.length){if(!here&&!plotGuards(p).length){p.raidT=(p.raidT||0)+dt;if(p.raidT>=RAID_TAKE){log('c-cap','🐺 来袭的野怪占领了'+o.name+'的'+p.name+'，领地变回无主，野怪随即离开');mons.forEach(m=>{if(m.raid==p.id)m.gone=1});p.owner=-1;p.idle=0;p.raidT=0;p.prog=0;p.capBy=-1;wake(o,'领地失守')}}}
+   else if(p.raidT>0){log('c-cap','🛡 '+o.name+' 的'+p.name+'打退了来袭野怪');p.raidT=0;p.idle=0}
    else if(here||hires(p).length){p.idle=0}
-   else{p.idle=(p.idle||0)+dt;if(p.idle>=RAID_IDLE){p.idle=0;p.raidT=0.001;const lv=Math.min(5,p.lv*2);for(let k=0;k<2;k++){const q=randIn(p);spawnMon(lv,q.x,q.y,p.id);mons[mons.length-1].raid=p.id}
+   else{p.idle=(p.idle||0)+dt;if(p.idle>=RAID_IDLE){p.idle=0;p.raidT=0.001;const lv=Math.min(5,p.lv*2);for(let k=0;k<2;k++){const q=randIn(p);spawnMon(lv,q.x,q.y,-1);mons[mons.length-1].raid=p.id}
      log('c-cap','🐺 野怪来袭'+o.name+'的'+p.name+'（无人看守），'+RAID_TAKE+' 秒内不回来打退就会失守');director(p.cx,p.cy,'野怪来袭',3);wake(o,'野怪来袭领地')}}}
   const caps=inside.filter(a=>a.plan[a.pi]&&a.plan[a.pi].t=='capture'&&a.plan[a.pi].p==p.id&&p.owner!=a.id);
   const guard=mons.some(m=>m.guard==p.id&&!m.dead&&!m.msg);
