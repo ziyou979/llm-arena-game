@@ -172,5 +172,12 @@ try{const top=$('bRe');if(top&&top.parentNode&&top.insertAdjacentElement){const 
  f.onchange=async()=>{const x=f.files&&f.files[0];f.value='';if(!x)return;try{enter(await load(x))}catch(e){alert(e.message)}};
  b.onclick=()=>{if(started&&!over){alert('比赛进行中，结束后才能看回放');return}if(REC.last&&!RP&&confirm('看上一局的回放？（取消 = 载入回放文件）')){try{enter(REC.last)}catch(e){alert(e.message)}return}f.click()};
  top.insertAdjacentElement('afterend',b);document.body.appendChild(f)}}catch(e){}
+// 建角大厅（开局遮罩）里也能载入回放：「载入回放文件」按钮 + 整页拖放
+try{const f2=document.createElement('input');f2.type='file';f2.style.display='none';document.body.appendChild(f2);
+ const open=async x=>{if(!x)return;if(started&&!over){alert('比赛进行中，结束后才能看回放');return}try{enter(await load(x))}catch(e){alert(e.message)}};
+ f2.onchange=()=>{const x=f2.files&&f2.files[0];f2.value='';open(x)};
+ const go=$('bGo');if(go&&go.parentNode&&!$('bRpIntro')){const b=document.createElement('button');b.id='bRpIntro';b.className='secondary';b.textContent='载入回放文件';b.style.marginLeft='8px';b.title='选 .replay.json.gz 或 .replay.json，不用解压；也可以直接把文件拖进页面';b.onclick=()=>f2.click();go.parentNode.appendChild(b)}
+ window.addEventListener('dragover',e=>{if(e.dataTransfer&&[...e.dataTransfer.types].includes('Files')){e.preventDefault();e.dataTransfer.dropEffect='copy'}});
+ window.addEventListener('drop',e=>{const x=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];if(!x)return;e.preventDefault();open(x)})}catch(e){}
 window.__replayApi={recMulti,stopAll,toJSON,enter,apply,setPov,save,stats:()=>({snaps:REC.cur?REC.cur.snaps.length:REC.last?REC.last.snaps.length:0,avgMs:REC.n?REC.cost/REC.n:0})};
 })();
