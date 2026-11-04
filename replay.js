@@ -65,7 +65,7 @@ function enter(data){if(!data||data.v!==VER||!data.snaps||data.snaps.length<2)th
  mons=[];npcs=[];fx=[];parts=[];projs=[];chests=[];meteors=[];MER=[];
  started=true;over=true;paused=true;selId=0;
  ['intro','endOv'].forEach(i=>{const e=document.getElementById(i);if(e&&e.style)e.style.display='none'});
- try{buildCards()}catch(e){}
+ try{const c=document.getElementById('cards');if(c&&c.style)c.style.display='';buildCards()}catch(e){}   // MCP 大厅会把选手卡藏起来，回放要显示出来才能点选手
  RP={d:data,t:data.snaps[0].t,end:data.snaps[data.snaps.length-1].t,play:true,speed:1,pov:-1,fog:true,last:performance.now(),li:-1,rec:null,multi:null};
  bar(true);apply(RP.t);setPov(-1);try{document.getElementById('rpBar').scrollIntoView({block:'nearest'})}catch(e){}}
 function apply(t){const S=RP.d.snaps,i=bs(S,t),s=S[i],n=S[Math.min(i+1,S.length-1)],k=n.t>s.t?Math.max(0,Math.min(1,(t-s.t)/(n.t-s.t))):0;
