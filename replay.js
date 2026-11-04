@@ -184,5 +184,7 @@ try{const f2=document.createElement('input');f2.type='file';f2.style.display='no
  const go=$('bGo');if(go&&go.parentNode&&!$('bRpIntro')){const b=document.createElement('button');b.id='bRpIntro';b.className='secondary';b.textContent='载入回放文件';b.style.marginLeft='8px';b.title='选 .replay.json.gz 或 .replay.json，不用解压；也可以直接把文件拖进页面';b.onclick=()=>f2.click();go.parentNode.appendChild(b)}
  window.addEventListener('dragover',e=>{if(e.dataTransfer&&[...e.dataTransfer.types].includes('Files')){e.preventDefault();e.dataTransfer.dropEffect='copy'}});
  window.addEventListener('drop',e=>{const x=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];if(!x)return;e.preventDefault();open(x)})}catch(e){}
+// 网址带 ?replay=<回放文件地址> 时，页面打开后直接载入那份回放（方便分享和自动化测试）
+try{const u=new URLSearchParams(location.search).get('replay');if(u)setTimeout(async()=>{try{const r=await fetch(u);if(!r.ok)throw new Error('下载回放失败：HTTP '+r.status);enter(await load(await r.blob()))}catch(e){alert(e.message)}},300)}catch(e){}
 window.__replayApi={recMulti,stopAll,toJSON,enter,apply,setPov,save,stats:()=>({snaps:REC.cur?REC.cur.snaps.length:REC.last?REC.last.snaps.length:0,avgMs:REC.n?REC.cost/REC.n:0})};
 })();
