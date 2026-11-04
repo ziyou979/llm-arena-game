@@ -142,7 +142,7 @@ async function save(d){d=d||(RP&&RP.d)||REC.last;if(!d){alert('还没有可保�
  if(window.CompressionStream){blob=await new Response(blob.stream().pipeThrough(new CompressionStream('gzip'))).blob();name+='.gz'}dl(blob,name)}
 async function load(file){let b=file;const head=new Uint8Array(await file.slice(0,2).arrayBuffer());
  if(head[0]==0x1f&&head[1]==0x8b){if(!window.DecompressionStream)throw new Error('浏览器不支持解压 .gz');b=await new Response(file.stream().pipeThrough(new DecompressionStream('gzip'))).blob()}
- return JSON.parse(await b.text())}
+ const t=await b.text();try{return JSON.parse(t)}catch(e){throw new Error('读不出回放：请选 .replay.json.gz 或解压后的 .replay.json 文件')}}
 
 // ---------- 界面 ----------
 const $=id=>document.getElementById(id);
@@ -168,7 +168,7 @@ function showEndBtn(){const e=$('endOv');if(!e||!e.querySelector)return;const p=
  const b=document.createElement('button');b.id='bRpEnd';b.className='secondary';b.textContent='看回放';b.style.marginRight='8px';b.onclick=()=>{try{enter(REC.last)}catch(er){alert(er.message)}};
  const s=document.createElement('button');s.id='bRpSave';s.className='secondary';s.textContent='保存回放';s.style.marginRight='8px';s.onclick=()=>save(REC.last);p.insertBefore(s,p.firstChild);p.insertBefore(b,p.firstChild)}
 try{const top=$('bRe');if(top&&top.parentNode&&top.insertAdjacentElement){const b=document.createElement('button');b.id='bRpLoad';b.textContent='回放';b.title='看上一局回放，或载入回放文件';
- const f=document.createElement('input');f.type='file';f.accept='.json,.gz,application/json,application/gzip';f.style.display='none';
+ const f=document.createElement('input');f.type='file';f.style.display='none';
  f.onchange=async()=>{const x=f.files&&f.files[0];f.value='';if(!x)return;try{enter(await load(x))}catch(e){alert(e.message)}};
  b.onclick=()=>{if(started&&!over){alert('比赛进行中，结束后才能看回放');return}if(REC.last&&!RP&&confirm('看上一局的回放？（取消 = 载入回放文件）')){try{enter(REC.last)}catch(e){alert(e.message)}return}f.click()};
  top.insertAdjacentElement('afterend',b);document.body.appendChild(f)}}catch(e){}
