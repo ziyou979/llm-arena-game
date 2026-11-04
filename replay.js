@@ -40,7 +40,7 @@ function snap(){const t0=performance.now();
   const r=[idOf(m),q2(m.x),q2(m.y),Math.round(m.hp),m.maxhp,m.lv,m.face||1,q2(Math.max(0,m.atk||0)),q2(Math.max(0,m.hit||0)),0,m.hire?1:0,m.elite?1:0,m.owner==null?-1:m.owner,m.guard==null?-1:m.guard,m.angry==null?-2:m.angry,m.msg?1:0,m.gone?1:0];cur.set(r[0],r)}
  if(key)s.M=pack([...cur.values()]);else{const P=REC.prevM,d=[],x=[];for(const[id,r]of cur){const o=P.get(id);if(!o||o.some((v,j)=>v!==r[j]))d.push(r)}for(const id of P.keys())if(!cur.has(id))x.push(id);s.Md=pack(d);if(x.length)s.Mx=x}
  REC.prevM=cur;
- for(const n of npcs){if(n.dead&&n.kind!='merchant')continue;const id=idOf(n);if(!REC.cur.npc[id])REC.cur.npc[id]=pick(n,NP_SKIP);s.N.push([id].concat(NK.map(k=>qv(n[k])),[n.bub?Object.assign({},n.bub):0]))}
+ for(const n of npcs){if(n.dead&&n.kind!='merchant')continue;const id=idOf(n);if(!REC.cur.npc[id])REC.cur.npc[id]=pick(n,NP_SKIP);s.N.push([id].concat(NK.map(k=>qv(n[k])),[n.bub?Object.assign({},n.bub):0],n.kind=='merchant'?[n.stall?[q2(n.stall.x),q2(n.stall.y),n.stall.plot]:0,n.stalled?1:0,q2(n.stallT||0)]:[]))}
  REC.cur.snaps.push(s);REC.cost+=performance.now()-t0;REC.n++}
 const _step=step;
 step=function(dt){if(RP)return;_step(dt);if(window.ARENA_NOREC)return;
@@ -77,7 +77,7 @@ function apply(t){const S=RP.d.snaps,i=bs(S,t),s=S[i],n=S[Math.min(i+1,S.length-
  mons=[...cm.values()].map(r=>{const e=nm.get(r[0]),m={x:r[1],y:r[2],hp:r[3],maxhp:r[4],lv:r[5],face:r[6],atk:r[7],hit:r[8],t:(r[0]*1.37)%9,hire:!!r[10],elite:!!r[11],owner:r[12],guard:r[13],angry:r[14]==-2?null:r[14],msg:r[15]?{}:null,gone:!!r[16],dead:0};
   if(e&&Math.hypot(e[1]-r[1],e[2]-r[2])<3){m.x=L(r[1],e[1],k);m.y=L(r[2],e[2],k)}if(m.msg)m.msg=null;return m});
  const nn=new Map(n.N.map(o=>[o[0],o])),NS=RP.d.npc;
- npcs=s.N.map(o=>{const c=Object.assign({},NS[o[0]]);NK.forEach((k2,q)=>c[k2]=o[q+1]);c.bub=o[NK.length+1]?Object.assign({},o[NK.length+1]):null;const e=nn.get(o[0]);if(e&&Math.hypot(e[1]-o[1],e[2]-o[2])<3){c.x=L(o[1],e[1],k);c.y=L(o[2],e[2],k)}return c});
+ npcs=s.N.map(o=>{const c=Object.assign({},NS[o[0]]);NK.forEach((k2,q)=>c[k2]=o[q+1]);c.bub=o[NK.length+1]?Object.assign({},o[NK.length+1]):null;const B=NK.length+2;if(o.length>B){const st=o[B];c.stall=st?{x:st[0],y:st[1],plot:st[2]}:null;c.stalled=!!o[B+1];c.stallT=o[B+2]}else if(c.kind=='merchant'){c.stall=null;c.stalled=false}const e=nn.get(o[0]);if(e&&Math.hypot(e[1]-o[1],e[2]-o[2])<3){c.x=L(o[1],e[1],k);c.y=L(o[2],e[2],k)}return c});
  MER=npcs.filter(x=>x.kind=='merchant');
  s.P.forEach((r,j)=>{const p=plots[j];if(p){p.owner=r[0];p.prog=r[1];p.capBy=r[2];p.lv=r[3]}});
  chests=s.C.map(c=>Object.assign({},c));meteors=s.Me.map(m=>Object.assign({},m));

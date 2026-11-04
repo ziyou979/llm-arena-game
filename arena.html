@@ -989,10 +989,10 @@ function ui(){agents.forEach(a=>{const d=document.getElementById('card'+a.id);d.
  if(logDirty){document.getElementById('log').innerHTML=logs.map(l=>'<div class="'+l.cls+'">'+l.txt+'</div>').join('');logDirty=false}
  if(vote)renderVote();renderBoard();
  document.getElementById('clock').textContent='剩余 '+fmt(MATCH-time)}
-function renderBoard(){const L=[];const nm=p=>plots[p].name;
+function renderBoard(){const L=[];const nm=p=>plots[p]?plots[p].name:'某处';
  for(const n of MER){if(n.dead){L.push('💀 '+n.name+' 遇害，'+Math.ceil(n.dead)+' 秒后在别处露面');continue}
   if(n.sos>0)L.push('<span style="color:#ff8a80">🆘 '+n.name+' 在'+nm(plotAt(n.x,n.y)?plotAt(n.x,n.y).id:n.plot)+'被野怪围攻，求救！</span>');
-  else if(n.stalled)L.push('🛒 '+(n.exposed?'<span style="color:#ff4d6d">🗡奸商·</span>':'')+n.name+' 在'+nm(n.stall.plot)+'出摊，剩 '+Math.ceil(n.stallT)+' 秒 · '+ITEMS[n.spec].n+'八折');
+  else if(n.stalled&&n.stall)L.push('🛒 '+(n.exposed?'<span style="color:#ff4d6d">🗡奸商·</span>':'')+n.name+' 在'+nm(n.stall.plot)+'出摊，剩 '+Math.ceil(n.stallT)+' 秒 · '+ITEMS[n.spec].n+'八折');
   else if(n.stall)L.push('🚚 '+n.name+' 正赶往'+nm(n.stall.plot)+'（主打'+ITEMS[n.spec].n+'）')}
  {const inT=agents.filter(a=>!a.dead&&inTownE(a)).map(a=>a.name);L.push('🏰 城区（安全区，禁止 PvP）：'+(inT.length?inT.join('、')+' 在城里':'暂时没人')+' · 酒馆打听 5 金 · 铁匠修理 30 金/升级 · 旅店 8 金 · 神殿祝福 25 金 · 公会情报 10 金')}
  const tr=TRAINER;L.push('📘 技能导师 '+(tr.dest?'正云游前往'+nm(tr.dest.plot):'在'+nm(tr.plot)+'授课，还会停留 '+Math.ceil(tr.stay)+' 秒'));
