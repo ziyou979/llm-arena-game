@@ -103,7 +103,7 @@ const _render=render;
 render=function(){if(!RP)return _render();
  const now=performance.now(),dt=Math.max(0,Math.min(.1,(now-RP.last)/1000));RP.last=now;
  if(RP.play){RP.t=Math.min(RP.end,RP.t+dt*RP.speed);if(RP.t>=RP.end){RP.play=false;stopAll()}}
- apply(RP.t);
+ try{apply(RP.t)}catch(e){tick();throw e}
  if(RP.multi&&RP.multi.on){const M=RP.multi;if(now-M.lastF>=1000/30-1){M.lastF=now;
   const sv={cv,cx,mc,mx,cam,selId,FOG,FOLLOW,trauma};
   for(const o of M.outs){cv=o.c;cx=o.g;mc=M.dm;mx=M.dmx;cam=o.cam;FOLLOW=o.p>=0;FOG=o.p>=0&&RP.fog;if(o.p>=0)selId=o.p;else{cam.x=RP.cam.x;cam.y=RP.cam.y}trauma=0;_render();overlay(cx,cv,povLabel(o.p))}
@@ -156,7 +156,7 @@ function bar(on){let d=$('rpBar');if(!on){if(d)d.style.display='none';return}
   '<span style="flex-basis:100%"></span>视角 <select id="rpPov"><option value="-1">导播</option>'+ro+'</select><label class="mini"><input type="checkbox" id="rpFog" checked> 选手视野迷雾</label>'+
   '<button id="rpRec">录制当前视角</button><button id="rpSave">保存回放文件</button><button id="rpExit" class="ghost">退出回放</button>'+
   '<span style="flex-basis:100%"></span><span class="mini">同时导出：</span><span id="rpPick" class="mini"><label><input type="checkbox" value="-1" checked> 导播</label> '+agents.map(a=>'<label><input type="checkbox" value="'+a.id+'" checked> '+a.name+'</label>').join(' ')+'</span><button id="rpMulti">同时导出勾选视角</button>'+
-  '<span class="mini" style="flex-basis:100%">导出按真实时间录制（1x 时 15 分钟一局要录 15 分钟），每个视角各存一个视频文件。导出期间别切走这个标签页，否则浏览器会暂停绘制。</span>';
+  '<span id="rpErr" class="mini" style="flex-basis:100%;color:#ff8a80"></span><span class="mini" style="flex-basis:100%">导出按真实时间录制（1x 时 15 分钟一局要录 15 分钟），每个视角各存一个视频文件。导出期间别切走这个标签页，否则浏览器会暂停绘制。</span>';
  $('rpPlay').onclick=()=>{RP.play=!RP.play;if(RP.t>=RP.end){RP.t=RP.d.snaps[0].t;RP.play=true}btn('rpPlay',RP.play?'暂停':'播放')};
  $('rpSpd').onchange=e=>RP.speed=+e.target.value;
  const sk=$('rpSeek');sk.oninput=e=>{sk._drag=true;RP.t=+e.target.value;RP.li=-1};sk.onchange=()=>{sk._drag=false;RP.li=-1};

@@ -1031,7 +1031,9 @@ cv.addEventListener('pointermove',e=>{if(!drag)return;const r=cv.getBoundingClie
 cv.addEventListener('pointerup',e=>{if(drag&&!drag.moved){const r=cv.getBoundingClientRect(),x=cam.x+(e.clientX-r.left)/r.width*VW,y=cam.y+(e.clientY-r.top)/r.height*VH;let b=null,bd=1.8;agents.forEach(a=>{const d=Math.hypot(a.x+.5-x,a.y-.2-y);if(d<bd){bd=d;b=a}});if(b){selId=b.id;setFollow(true);focus=null;ui()}}drag=null});
 let acc=0,last=performance.now(),uiT=0;
 function loop(now){const d=Math.min(.1,(now-last)/1000);last=now;if(!paused){acc+=d*speed;let n=0;while(acc>=DT&&n<40){step(DT);acc-=DT;n++}}
- render();uiT+=d;if(uiT>.25){uiT=0;ui()}requestAnimationFrame(loop)}
+ try{render()}catch(e){loopErr(e)}uiT+=d;if(uiT>.25){uiT=0;try{ui()}catch(e){loopErr(e)}}requestAnimationFrame(loop)}
+// 一帧出错不再让整个画面停住：记下错误继续下一帧（回放时错误也显示在回放栏里）
+let LOOP_ERR='';function loopErr(e){const m=String(e&&e.message||e);if(m!==LOOP_ERR){LOOP_ERR=m;console.error('[arena] 画面出错',e);const x=document.getElementById('rpErr');if(x)x.textContent='画面出错：'+m}}
 init();requestAnimationFrame(loop);
 window.__sim=s=>{for(let i=0;i<s/DT;i++)step(DT)};
 </script><script src="replay.js"></script>
