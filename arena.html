@@ -754,7 +754,7 @@ function step(dt){time+=dt;directorTick(dt);if(bannerT>0)bannerT-=dt;
    if(moveTo(m,m.hx,m.hy,dt,1.6)){m.ret=0}continue}
   if(m.alarmT>0)m.alarmT-=dt;
   const ag=m.hire?4.5:2.5+m.lv*.5;let tg=null,bd=ag;if(m.alarmT>0&&m.alarm&&!m.alarm.dead&&dist(m,m.alarm)<10){tg=m.alarm;bd=dist(m,tg)}else for(const a of agents)if(!a.dead&&!inTownE(a)&&!(inBush(a)&&dist(a,m)>1.5)&&!(m.hire&&(friendGuard(a,m)||bribing(a,m)))){const d=dist(a,m);if(d<bd){bd=d;tg=a}}
-  {const foes=m.raid!=null?plotGuards(plots[m.raid]):(m.guard>=0&&!m.msg?raidMons(plots[m.guard]):null);if(foes)for(const f of foes){const d=dist(f,m);if(!tg||d<bd||!tg.lv){bd=d;tg=f}}}
+  {const foes=m.raid!=null?plotGuards(plots[m.raid]):(m.guard>=0&&!m.msg?raidMons(plots[m.guard]):null);if(foes)for(const f of foes){const d=dist(f,m);if(!tg||d<bd){bd=d;tg=f}}}
   const foe=tg&&!tg.st&&tg.lv&&(tg.raid!=null||m.raid!=null);
   if(!m.hire&&!tg)for(const n of MER)if(!n.dead){const d=dist(n,m);if(d<Math.min(bd,2.2)){bd=d;tg=n}}
   const lh=Math.hypot(m.x-m.hx,m.y-m.hy);
