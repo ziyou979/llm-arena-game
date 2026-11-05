@@ -9,6 +9,9 @@ const TOKF=path.join(DIR,'.arena-tokens.json');let saved={};try{if(!process.argv
 const SEATS=[0,1,2,3,4,5,6,7].map(i=>({seat:i,token:process.env['ARENA_TOKEN_'+i]||saved[i]||('s'+(i+1)+'-'+crypto.randomBytes(3).toString('hex'))}));
 try{fs.writeFileSync(TOKF,JSON.stringify(Object.fromEntries(SEATS.map(s=>[s.seat,s.token])),null,1))}catch(e){}
 const byToken=Object.fromEntries(SEATS.map(s=>[s.token,s]));
+// 宿主密钥：每次启动随机生成，只注入到游戏页面里。/bridge/*（页面心跳桥）和完整版 /status 需要它，
+// 防止拿到某个座位令牌的模型客户端冒充宿主、读到其他座位的令牌。能打开游戏页面的本机用户视为宿主。
+const BRIDGE_KEY=crypto.randomBytes(16).toString('hex');
 
 // ---------- 与游戏页面的长轮询桥 ----------
 let queue=[],held=null,lastPoll=0,pageState={seats:[],started:false,over:false,time:0},rid=0;const waiters=new Map();let infoSent=0;const joinedAt={};const cache={};
@@ -16,8 +19,8 @@ function flush(){if(held&&queue.length){const r=held;held=null;clearTimeout(r.t)
 // 页面是否在线：有挂起的长轮询就算在线；否则 20 秒内轮询过也算（请求会排队等下一轮心跳）
 function pageGap(){return held?0:Date.now()-lastPoll}
 function pageDownMsg(){const g=pageGap();return g>60000||!lastPoll?'游戏页面没打开或已关闭：请在浏览器打开 '+BASE:'游戏页面心跳延迟 '+Math.round(g/1000)+' 秒：标签页可能被浏览器放到后台冻结了。请把游戏放在单独的浏览器窗口里，不要最小化'}
-function callPage(seat,op,args,ms){return new Promise(resolve=>{if(pageGap()>20000)return resolve({error:pageDownMsg(),heartbeat:true});
- const id=++rid;const t=setTimeout(()=>{waiters.delete(id);resolve({error:'游戏页面响应超时（'+pageDownMsg()+'）',heartbeat:true})},ms||20000);waiters.set(id,{resolve,t});queue.push({rid:id,seat,op,args});flush()})}
+function callPage(seat,op,args,ms,reuseId){return new Promise(resolve=>{if(pageGap()>20000)return resolve({error:pageDownMsg(),heartbeat:true});
+ const id=reuseId||++rid;const t=setTimeout(()=>{waiters.delete(id);resolve({error:'游戏页面响应超时（'+pageDownMsg()+'）',heartbeat:true})},ms||20000);waiters.set(id,{resolve,t});queue.push({rid:id,seat,op,args});flush()})}
 function onPoll(req,res,body){lastPoll=Date.now();for(const r of body.replies||[]){const w=waiters.get(r.rid);if(w){clearTimeout(w.t);waiters.delete(r.rid);w.resolve(r.res)}}
  pageState={seats:body.seats||[],started:body.started,over:body.over,time:body.time};
  if(!body.hasInfo&&Date.now()-infoSent>3000){infoSent=Date.now();queue.push({rid:++rid,seat:-1,op:'info',args:{base:BASE,seats:SEATS}});
@@ -52,7 +55,7 @@ const CMD_ITEM={type:'object',required:['type'],properties:{type:{type:'string',
  skill:{type:'string',enum:['fireball','charge','heal']},npc:{type:'string',enum:['tavern','smith','inn','temple','guild']},upgrade:{type:'boolean'},bribe:{type:'boolean'},messenger:{type:'boolean'}}};
 const TOOLS=[
  {name:'get_rules',description:'读规则和全部指令说明。开局先读一次。',inputSchema:{type:'object',properties:{}}},
- {name:'get_manual',description:'读完整选手手册（服务器上的最新版 skill）：规则、主循环、指令、打法、常见错误。part=rules 完整规则和数字，part=connect 接入与安装，part=troubleshooting 报错处理，part=sprite 形象绘制规范，part=template 形象模板 JSON。本地 skill 和这里不一致时以这里为准。',inputSchema:{type:'object',properties:{part:{type:'string',enum:['all','sprite','template']}}}},
+ {name:'get_manual',description:'读完整选手手册（服务器上的最新版 skill）：规则、主循环、指令、打法、常见错误。part=rules 完整规则和数字，part=connect 接入与安装，part=troubleshooting 报错处理，part=sprite 形象绘制规范，part=template 形象模板 JSON。本地 skill 和这里不一致时以这里为准。',inputSchema:{type:'object',properties:{part:{type:'string',enum:['all','rules','connect','troubleshooting','sprite','template']}}}},
  {name:'join',description:'接入你的座位，并可设置在直播里显示的名字（比如你的模型名）。',inputSchema:{type:'object',properties:{name:{type:'string',description:'显示名，最多 24 字'}}}},
  {name:'setup_character',description:'开战前设置角色：30 点属性和武器，可选提交像素形象 JSON（pixel-arena-sprite/1，见游戏页「绘制规范」）。',inputSchema:{type:'object',required:['stats','weapon'],properties:{stats:{type:'array',items:{type:'integer'},description:'[力量,敏捷,体质,智力,魅力,感知]，每项 1-10，总和 30'},weapon:{type:'string',enum:['sword','staff','bow','dagger']},sprite:{type:'object'},spritePath:{type:'string',description:'本机上形象 JSON 文件的路径（代替内联 sprite，省 token）'},name:{type:'string'},motto:{type:'string',description:'一句口号，显示在大厅'}}}},
  {name:'situation',description:'战况简报：一段整理好的文字，含毒圈、自己、视野内对手（含相对你的战力倍数）、空领地、空投委托、排名和 5×5 小地图。想了解全局时用它。',inputSchema:{type:'object',properties:{}}},
@@ -64,23 +67,26 @@ const TOOLS=[
  {name:'talk',description:'说一句话（最多 60 字）。默认视野内的人都能听到；to=选手 id 是点名对某人说，会叫醒对方；ally=true 是盟友密语，不限距离，只有盟友能收到。',inputSchema:{type:'object',required:['text'],properties:{text:{type:'string'},to:{type:'integer',description:'点名对象的选手 id（对方要在你视野内，或是你盟友）'},ally:{type:'boolean',description:'盟友密语，不限距离'}}}}];
 
 function withVer(r){if(r&&r.ok&&typeof r.ok=='object')r.ok.skillVersion=skillVersion();return r}
-async function runTool(seat,name,args){args=args||{};for(let i=0;;i++){const r=await runTool1(seat,name,args);if(r&&r.heartbeat&&i<2&&pageGap()<60000&&name!='wait_for_event'){await new Promise(z=>setTimeout(z,1500));continue}return r}}
-async function runTool1(seat,name,args){
+// 写操作重试时复用同一个 rid：页面端按 rid 去重，超时重发不会把加点/说话/下计划执行两遍
+const WRITE_OPS=['act','allocate_points','answer_pact','talk','join','setup_character'];
+async function runTool(seat,name,args){args=args||{};const key=WRITE_OPS.includes(name)?++rid:null;
+ for(let i=0;;i++){const r=await runTool1(seat,name,args,key);if(r&&r.heartbeat&&i<2&&pageGap()<60000&&name!='wait_for_event'){await new Promise(z=>setTimeout(z,1500));continue}return r}}
+async function runTool1(seat,name,args,key){
  let note=null;
  const joined=(pageState.seats[seat]||{}).ext||Date.now()-(joinedAt[seat]||0)<4000;if(!joined&&name!='get_rules'&&name!='get_manual'&&name!='wait_for_event'){const ja=name=='join'?args:(args.name?{name:args.name}:{});const r=await callPage(seat,'join',ja);if(r.error)return r;joinedAt[seat]=Date.now();cache[seat]=Object.assign(cache[seat]||{},{join:Object.assign({},(cache[seat]||{}).join,ja)});if(name=='join')return withVer(r);if(!ja.name&&!(cache[seat].join||{}).name)note='已自动接入，但你还没起名字：调用 join{name} 设置直播里显示的名字'}
  switch(name){
  case'get_rules':return{ok:RULES+'\n\n完整选手手册（打法、简报怎么读、形象怎么画）调 get_manual，永远是服务器上的最新版。skill 版本：'+skillVersion()};
  case'get_manual':return{ok:manual(args.part)};
- case'join':{const r=await callPage(seat,'join',args);if(!r.error)cache[seat]=Object.assign(cache[seat]||{},{join:args});return withVer(r)}
+ case'join':{const r=await callPage(seat,'join',args,undefined,key);if(!r.error)cache[seat]=Object.assign(cache[seat]||{},{join:args});return withVer(r)}
  case'setup_character':{if(args.spritePath&&!args.sprite){try{args.sprite=JSON.parse(fs.readFileSync(path.resolve(args.spritePath),'utf8'))}catch(e){return{error:'读不到 spritePath：'+e.message}}}delete args.spritePath;
-  const r=await callPage(seat,'setup',args);if(!r.error&&r.ok&&r.ok.statsSaved){const keep=Object.assign({},args);if(!r.ok.spriteOk)delete keep.sprite;cache[seat]=Object.assign(cache[seat]||{},{setup:Object.assign({},(cache[seat]||{}).setup,keep)})}
+  const r=await callPage(seat,'setup',args,undefined,key);if(!r.error&&r.ok&&r.ok.statsSaved){const keep=Object.assign({},args);if(!r.ok.spriteOk)delete keep.sprite;cache[seat]=Object.assign(cache[seat]||{},{setup:Object.assign({},(cache[seat]||{}).setup,keep)})}
   if(r.ok&&r.ok.ok===false)return{error:JSON.stringify(r.ok)};if(note&&r.ok)r.ok.note=note;return r}
  case'observe':return args.format=='report'?callPage(seat,'situation',{}):callPage(seat,'observe',{brief:!!args.brief});
  case'situation':return callPage(seat,'situation',{});
- case'act':return callPage(seat,'act',args);
- case'allocate_points':return callPage(seat,'allocate',args);
- case'answer_pact':return callPage(seat,'answer_pact',args);
- case'talk':return callPage(seat,'talk',args);
+ case'act':return callPage(seat,'act',args,undefined,key);
+ case'allocate_points':return callPage(seat,'allocate',args,undefined,key);
+ case'answer_pact':return callPage(seat,'answer_pact',args,undefined,key);
+ case'talk':return callPage(seat,'talk',args,undefined,key);
  case'wait_for_event':{const lim=Date.now()+1000*Math.max(1,Math.min(50,args.timeout_seconds||25));
   if(!joined){const r=await callPage(seat,'join',args.name?{name:args.name}:{});if(r.error&&!r.heartbeat)return r;if(!r.error)joinedAt[seat]=Date.now()}
   // 页面端挂起等待，一有事件立即返回（不再每 600ms 轮询一次）
@@ -96,7 +102,10 @@ const META_V='io.modelcontextprotocol/protocolVersion',META_SI='io.modelcontextp
 const instructions=()=>'开局先调 get_manual 读完整选手手册（服务器上的最新版，本地 skill 过期时以它为准）。\n\n'+RULES;
 async function callTool(seat,params,ok){const r=await runTool(seat.seat,params&&params.name,params&&params.arguments);
   if(r.error)return ok({content:[{type:'text',text:'错误：'+r.error}],isError:true});
-  if(r.ok&&typeof r.ok.report=='string'){const k=r.ok;return ok({content:[{type:'text',text:(k.lobby?'':k.ready?'【需要你决策】'+(k.secondsUntilTimeout!=null?'（'+k.secondsUntilTimeout+'s 内回应）':'')+(k.pactPending?' 先用 answer_pact 回复结盟请求':'')+(k.planRunning&&!k.over?' 计划还在跑：要改就 act{plan}，不改就 act{keep:true}（加点、回结盟、回话后若没别的事会自动结束这一轮）':'')+'\n':'【超时唤醒，没有新事件】\n')+k.report}]})}
+  if(r.ok&&typeof r.ok.report=='string'){const k=r.ok;
+   // 状态元数据放进 structuredContent：客户端判断「是否结束/是否有新事件」用机器字段，不要再解析简报正文
+   return ok({content:[{type:'text',text:(k.lobby?'':k.ready?'【需要你决策】'+(k.secondsUntilTimeout!=null?'（'+k.secondsUntilTimeout+'s 内回应）':'')+(k.pactPending?' 先用 answer_pact 回复结盟请求':'')+(k.planRunning&&!k.over?' 计划还在跑：要改就 act{plan}，不改就 act{keep:true}（加点、回结盟、回话后若没别的事会自动结束这一轮）':'')+'\n':'【超时唤醒，没有新事件】\n')+k.report}],
+    structuredContent:{ready:!!k.ready,turn:k.turn,over:!!k.over,lobby:!!k.lobby,hasNew:!!k.hasNew,secondsUntilTimeout:k.secondsUntilTimeout,planRunning:!!k.planRunning,pactPending:!!k.pactPending}})}
   return ok({content:[{type:'text',text:typeof r.ok=='string'?r.ok:JSON.stringify(r.ok)}]})}
 // 旧版：和以前完全一样
 async function rpc(seat,msg){const{id,method,params}=msg;if(id===undefined||id===null)return null;
@@ -214,20 +223,23 @@ Write-Host '以后每局开局，模型跑 arena.mjs update 会把上面所有�
 // ---------- HTTP ----------
 function send(res,code,obj,type){if(res.writableEnded)return;const b=typeof obj=='string'?obj:JSON.stringify(obj);res.writeHead(code,{'content-type':type||'application/json; charset=utf-8','access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-expose-headers':'Mcp-Session-Id, MCP-Protocol-Version','cache-control':'no-store'});res.end(b)}
 function readBody(req){return new Promise(r=>{let d='';req.on('data',c=>{d+=c;if(d.length>4e6)req.destroy()});req.on('end',()=>{try{r(d?JSON.parse(d):{})}catch(e){r({__bad:1})}})})}
-function page(){let h=fs.readFileSync(path.join(DIR,'arena.html'),'utf8');const inj='<script>window.ARENA_BRIDGE=location.origin</script><script src="/bridge.js"></script>';return h.includes('</body>')?h.replace('</body>',inj+'</body>'):h+inj}
+function page(){let h=fs.readFileSync(path.join(DIR,'arena.html'),'utf8');const inj='<script>window.ARENA_BRIDGE=location.origin;window.ARENA_BRIDGE_KEY="'+BRIDGE_KEY+'"</script><script src="/bridge.js"></script>';return h.includes('</body>')?h.replace('</body>',inj+'</body>'):h+inj}
 
 http.createServer(async(req,res)=>{const u=new URL(req.url,'http://x');
  if(req.method=='OPTIONS')return send(res,204,'');
  if(u.pathname=='/'||u.pathname=='/index.html')return send(res,200,page(),'text/html; charset=utf-8');
  if(u.pathname=='/bridge.js')return send(res,200,fs.readFileSync(path.join(DIR,'bridge.js'),'utf8'),'text/javascript; charset=utf-8');
  if(u.pathname=='/replay.js')return send(res,200,fs.readFileSync(path.join(DIR,'replay.js'),'utf8'),'text/javascript; charset=utf-8');
- if(u.pathname=='/bridge/poll'&&req.method=='POST'){const b=await readBody(req);return onPoll(req,res,b)}
- if(u.pathname=='/bridge/reply'&&req.method=='POST'){const b=await readBody(req);lastPoll=Date.now();for(const r of b.replies||[]){const w=waiters.get(r.rid);if(w){clearTimeout(w.t);waiters.delete(r.rid);w.resolve(r.res)}}return send(res,200,{ok:true})}
+ if(u.pathname=='/bridge/poll'&&req.method=='POST'){if(hdr(req,'x-arena-key')!==BRIDGE_KEY)return send(res,403,{error:'宿主密钥不对：/bridge/* 只接受游戏页面自己'});const b=await readBody(req);return onPoll(req,res,b)}
+ if(u.pathname=='/bridge/reply'&&req.method=='POST'){if(hdr(req,'x-arena-key')!==BRIDGE_KEY)return send(res,403,{error:'宿主密钥不对：/bridge/* 只接受游戏页面自己'});const b=await readBody(req);lastPoll=Date.now();for(const r of b.replies||[]){const w=waiters.get(r.rid);if(w){clearTimeout(w.t);waiters.delete(r.rid);w.resolve(r.res)}}return send(res,200,{ok:true})}
  if(u.pathname=='/skill/manifest.json')return send(res,200,skillManifest());
  if(u.pathname=='/skill/install.ps1')return send(res,200,installPs1(BASE),'text/plain; charset=utf-8');
  if(u.pathname=='/skill/install.sh')return send(res,200,installSh(BASE),'text/x-shellscript; charset=utf-8');
  if(u.pathname.startsWith('/skill/file/')){const rel=decodeURIComponent(u.pathname.slice(12));if(!skillFiles().includes(rel))return send(res,404,{error:'没有这个文件'});return send(res,200,fs.readFileSync(path.join(SKILL_DIR,rel),'utf8'),rel.endsWith('.json')?'application/json; charset=utf-8':'text/plain; charset=utf-8')}
- if(u.pathname=='/status')return send(res,200,{page:Date.now()-lastPoll<5000,...pageState,seats:SEATS.map(s=>({...s,...(pageState.seats[s.seat]||{})}))});
+ // /status 无密钥时只回在线状态；带宿主密钥才给完整座位数据（含令牌），防止选手客户端互相拿到凭证
+ if(u.pathname=='/status'){const live=Date.now()-lastPoll<5000;
+  if(hdr(req,'x-arena-key')!==BRIDGE_KEY)return send(res,200,{page:live,started:pageState.started,over:pageState.over,time:pageState.time});
+  return send(res,200,{page:live,...pageState,seats:SEATS.map(s=>({...s,...(pageState.seats[s.seat]||{})}))})}
  const m=u.pathname.match(/^\/mcp\/([\w-]+)\/?$/);
  if(m){const seat=byToken[m[1]];
   if(!originOk(req))return send(res,403,{jsonrpc:'2.0',error:{code:-32600,message:'Origin 不被允许（可用环境变量 ARENA_ALLOW_ORIGINS 放行）'}});

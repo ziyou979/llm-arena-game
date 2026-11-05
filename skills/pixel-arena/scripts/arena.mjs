@@ -47,35 +47,37 @@ async function tool(name, a = {}) {
   const r = await rpc('tools/call', { name, arguments: a });
   const t = r.content.map(c => c.text).join('\n');
   if (r.isError) throw new Error(t.replace(/^错误：/, ''));
-  return t;
+  return { text: t, meta: r.structuredContent || null };
 }
 const J = s => { try { return JSON.parse(s); } catch (e) { throw new Error('参数不是合法 JSON：' + s); } };
 const out = t => { try { console.log(JSON.stringify(JSON.parse(t), null, 1)); } catch (e) { console.log(t); } };
 
 try {
   switch (cmd) {
-    case 'status': console.log(await tool('situation')); break;
-    case 'wait': console.log(await tool('wait_for_event', { format: 'report', timeout_seconds: +(args[0] || 25) })); break;
+    case 'status': console.log((await tool('situation')).text); break;
+    case 'wait': console.log((await tool('wait_for_event', { format: 'report', timeout_seconds: +(args[0] || 25) })).text); break;
     case 'watch':
+      // 结束/是否有新事件都看服务器给的结构化字段，不再解析简报正文（聊天里出现「（已结束）」不会误停）
       for (;;) {
-        const t = await tool('wait_for_event', { format: 'report', timeout_seconds: 50 });
-        if (!t.startsWith('【超时唤醒')) console.log('\n' + new Date().toLocaleTimeString() + '\n' + t);
-        if (/（已结束）/.test(t)) break;
+        const r = await tool('wait_for_event', { format: 'report', timeout_seconds: 50 });
+        const show = r.meta ? !!(r.meta.hasNew || r.meta.ready || r.meta.over) : !r.text.startsWith('【超时唤醒');
+        if (show) console.log('\n' + new Date().toLocaleTimeString() + '\n' + r.text);
+        if (r.meta ? !!r.meta.over : /（已结束）/.test(r.text)) break;
       }
       break;
-    case 'act': out(await tool('act', J(args.join(' ')))); break;
-    case 'keep': out(await tool('act', { keep: true, thought: args.join(' ') || undefined })); break;
+    case 'act': out((await tool('act', J(args.join(' ')))).text); break;
+    case 'keep': out((await tool('act', { keep: true, thought: args.join(' ') || undefined })).text); break;
     case 'say': {
       const a = { text: '' };
       if (args[0] === '@ally') { a.ally = true; args.shift(); }
       else if (/^@\d+$/.test(args[0] || '')) a.to = +args.shift().slice(1);
       a.text = args.join(' ');
-      out(await tool('talk', a)); break;
+      out((await tool('talk', a)).text); break;
     }
-    case 'points': out(await tool('allocate_points', J(args.join(' ')))); break;
-    case 'pact': out(await tool('answer_pact', { accept: /^(y|yes|1|true|是|好)$/i.test(args[0] || ''), say: args.slice(1).join(' ') || undefined })); break;
-    case 'json': out(await tool('observe', {})); break;
-    case 'call': out(await tool(args[0], args[1] ? J(args.slice(1).join(' ')) : {})); break;
+    case 'points': out((await tool('allocate_points', J(args.join(' ')))).text); break;
+    case 'pact': out((await tool('answer_pact', { accept: /^(y|yes|1|true|是|好)$/i.test(args[0] || ''), say: args.slice(1).join(' ') || undefined })).text); break;
+    case 'json': out((await tool('observe', {})).text); break;
+    case 'call': out((await tool(args[0], args[1] ? J(args.slice(1).join(' ')) : {})).text); break;
     case 'update': {
       // 同步本 skill 所在目录，以及安装脚本登记过的所有位置（~/.pixel-arena/installs.txt），这样装在多个 AI 工具里的副本一起更新
       const { createHash } = await import('node:crypto');

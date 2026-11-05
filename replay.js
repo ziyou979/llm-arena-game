@@ -47,7 +47,7 @@ step=function(dt){if(RP)return;_step(dt);if(window.ARENA_NOREC)return;
  if(started&&agents&&agents.length){if(!over){if(!REC.cur||REC.cur.seed!==seed)begin();if(REC.k++%EVERY==0)snap()}
   else if(REC.cur&&REC.cur.seed===seed){snap();REC.last=REC.cur;REC.cur=null;showEndBtn()}}};
 const _log=log;
-log=function(cls,txt){_log(cls,txt);if(REC.cur&&!over&&!RP&&logs[0])REC.cur.logs.push([q2(time),cls,logs[0].txt])};
+log=function(cls,txt,recipients){_log(cls,txt,recipients);if(REC.cur&&!over&&!RP&&logs[0])REC.cur.logs.push([q2(time),cls,logs[0].txt])};
 
 // ---------- 回放 ----------
 let RP=null;window.__rp=()=>RP;
