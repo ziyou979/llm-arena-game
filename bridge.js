@@ -6,7 +6,7 @@ const MN=['','史莱姆','哥布林','骷髅','骷髅队长','石像魔'];
 const STK=['str','agi','con','int','cha','per'];
 const EXT_TIMEOUT=180; // 真实秒（不受倍速影响，暂停时不计）：模型这么久不回应，本轮由引擎代打
 // 纯信息事件：手上还有没跑完的计划时不叫醒模型，只排队，等下次被叫醒时一起带上
-const LOW_EV=['公告板新委托','世界事件','空投被抢','酒馆情报','公会情报','商人求救','悬赏发布','新盟友'];
+const LOW_EV=['你被悬赏','公告板新委托','世界事件','空投被抢','酒馆情报','公会情报','商人求救','悬赏发布','新盟友'];
 const r1=v=>Math.round(v*10)/10;
 const EXT_PER={aggr:.5,econ:.5,diplo:.5,treach:0};
 let INFO=null;
@@ -55,7 +55,7 @@ function goBridge(){if(started)return;const filled=SEATS.filter(x=>x.kind!='empt
  seatAgent={};SEAT_N=filled.length;agents=filled.map((S,j)=>{const a=newAgent(seatModel(S),j);if(S.spec)a.spec=S.spec;a.st=seatModel(S).st;a.maxhp=maxHp(a);a.hp=a.maxhp;composeSprite(a);a.seat=S.seat;a.ext=S.kind=='ext';if(a.ext&&S.habits)try{setHabits(a,S.habits)}catch(e){}seatAgent[S.seat]=a;
   Object.assign(a,{aliveT:0,idleT2:0,waitT:0,bad:0,lat:[]});return a});
  selId=0;const cards=document.getElementById('cards');if(cards&&cards.style)cards.style.display='';buildCards();try{fillSlots()}catch(e){}
- _go();log('c-world','📣 参赛：'+agents.map(a=>a.name+(a.ext?'（MCP）':'（模拟）')).join('、'))}
+ _go();log('c-world','📣 参赛：'+agents.map(a=>a.name+(a.ext?'（MCP）':'（模拟）')).join('、'),RALL())}
 go=goBridge;try{document.getElementById('bGo').onclick=goBridge}catch(e){}
 
 
@@ -70,17 +70,19 @@ tryThink=function(a){if(!a.ext)return _try(a);
 let TAKEOVER=false;
 finishThink=function(a){if(!a.ext)return _fin(a);
  a.timeouts=(a.timeouts||0)+1;a.lastTurnEnd=time;
- if(!TAKEOVER){a.thinking=false;removeEvents(a,a.turnEvents);a.turnEvents=null;a.timeoutStreak=(a.timeoutStreak||0)+1;
+ if(!TAKEOVER){a.thinking=false;removeEvents(a,a.turnEvents);a.turnEvents=null;a.shownEvents=null;a.timeoutStreak=(a.timeoutStreak||0)+1;
   log('c-think','⌛ '+a.name+' '+EXT_TIMEOUT+' 秒没回应（第 '+a.timeouts+' 次），引擎不接管：'+(a.plan[a.pi]?'继续执行原计划':'原地发呆'));bub(a,'……（没回应）',2);return}
  log('c-think','⌛ '+a.name+' '+EXT_TIMEOUT+' 秒没回应，这一轮由引擎代打');
  const s=a.m;a.m=Object.assign({},s,{per:EXT_PER});_fin(a);a.m=s};
 try{const box=document.getElementById('settings'),ok=document.getElementById('bSetOk');if(box&&ok&&box.insertBefore){const l=document.createElement('label');l.innerHTML='<input type="checkbox" id="takeover"> 模型超时由引擎代打（默认关闭：超时就继续原计划或原地发呆，方便看出问题）';box.insertBefore(l,ok.parentNode&&ok.parentNode!==box?ok.parentNode:ok);const c=document.getElementById('takeover');if(c)c.onchange=()=>{TAKEOVER=!!c.checked}}}catch(e){}
 answerPact=function(a,from){if(!a.ext)return _ans(a,from);if(a.allies.has(from.id)||from.dead)return;
  a.pactOffer={from:from.id,t:time};a.pactExpired=null;a.stop=Math.max(a.stop,2);bub(a,'让我想想……',1);
- log('c-pact','🤔 '+a.name+' 在考虑 '+from.name+' 的当面结盟请求');wake(a,'当面结盟请求：'+from.name)};
+ log('c-pact','🤔 '+a.name+' 在考虑 '+from.name+' 的当面结盟请求',RC(a,from));wake(a,'当面结盟请求：'+from.name)};
 
+function expirePact(a){if(!a.pactOffer||time-a.pactOffer.t<60)return;const f=agents[a.pactOffer.from];a.pactExpired={from:f.id,name:f.name};a.pactOffer=null;
+ log('c-pact','⌛ '+a.name+' 没在 60 秒内回复 '+f.name+' 的结盟请求，已过期',RC(a,f));if(f.ext)notifyAgent(f,'结盟请求过期','#'+a.id+' '+a.name+' 没在 60 秒内回复你的结盟请求，请求已作废')}
 function acceptPact(a,from){a.allies.add(from.id);from.allies.add(a.id);a.known.add(from.id);from.known.add(a.id);
- log('c-pact','🤝 '+a.name+' 当场接受了 '+from.name+' 的结盟（共享视野）');banner2('🤝 '+from.name+' × '+a.name+' 结盟');director(a.x,a.y,'结盟',2);wake(from,'新盟友');say(from,a.name+'答应了。')}
+ log('c-pact','🤝 '+a.name+' 当场接受了 '+from.name+' 的结盟（共享视野）',RC(a,from));banner2('🤝 '+from.name+' × '+a.name+' 结盟');director(a.x,a.y,'结盟',2);notifyAgent(from,'新盟友','#'+a.id+' '+a.name+' 接受了你的结盟（共享视野）');say(from,a.name+'答应了。')}
 
 // ---------- 观察 ----------
 function briefify(o,a){if(!o||!o.plots)return o;const mine=o.plots.filter(p=>p.owner==a.id),free=o.plots.filter(p=>p.owner<0).sort((x,y)=>x.dist-y.dist).slice(0,4),foe=o.plots.filter(p=>p.owner>=0&&p.owner!=a.id).sort((x,y)=>x.dist-y.dist).slice(0,3);
@@ -92,7 +94,9 @@ function seatOf(i){const a=seatAgent[i];if(!a)throw new Error(started?'你的座
 // 收件箱两段式消费：构造观察时先把消息挪进 inboxPending，模型 act 结束本轮才算确认；
 // 期间任何一次观察都会重新带上未确认消息，回包丢失不再等于消息丢失
 let msgSeq=0;
-function takeInbox(a){const fresh=(a.inbox||[]).splice(0),pend=a.inboxPending||[];
+// 叫醒原因同理：返回给模型的观察里出现过的事件，记为已展示；结束本轮时清掉「本轮开始时的快照 ∪ 已展示」，没展示过的留给下一轮
+function markShown(a){const ev=a.events.slice();a.shownEvents=a.shownEvents||[];for(const e of ev)if(!a.shownEvents.includes(e))a.shownEvents.push(e);return ev}
+function takeInbox(a){const fresh=(a.inbox||[]).splice(0),pend=a.inboxPending||[];a.inboxFresh=fresh.length;
  const seen=new Set(),out=[];for(const m of pend.concat(fresh)){const k=m.mid!=null?m.mid:m.from+'|'+m.text+'|'+m.t;if(seen.has(k))continue;seen.add(k);out.push(m)}
  a.inboxPending=out.length?out.slice(-20):null;return out}
 function pushMsg(b,m){m.mid=++msgSeq;(b.inbox=b.inbox||[]).push(m);
@@ -109,9 +113,9 @@ function obs(a){const D=(x,y)=>Math.round(Math.hypot(x-a.x,y-a.y));const REC={1:
    dead:a.dead?Math.ceil(a.dead):0,inTown:inTownE(a),inBush:inBush(a),plotHere:(plotAt(a.x,a.y)||{}).id,vision:r1(v),allies:[...a.allies],betrayer:a.betrayer,
    plan:a.plan.map(cmdNameId),planStep:a.pi,planLoop:!!a.loopSrc,idle:!a.plan[a.pi],power:Math.round(power(a)),score:score(a),
    alerts:a.alert?Object.keys(a.alert).map(k=>({plot:+k,secondsAgo:Math.round(time-a.alert[k])})).filter(x=>x.secondsAgo<=60):[]},
-  pendingEvents:a.events.slice(),pactOffer:a.pactOffer&&time-a.pactOffer.t<60?{from:a.pactOffer.from,name:agents[a.pactOffer.from].name,secondsLeft:Math.round(60-(time-a.pactOffer.t))}:null,
-  pactExpired:(()=>{if(a.pactOffer&&time-a.pactOffer.t>=60){a.pactExpired={from:a.pactOffer.from,name:agents[a.pactOffer.from].name};a.pactOffer=null;log('c-pact','⌛ '+a.name+' 没在 60 秒内回复 '+a.pactExpired.name+' 的结盟请求，已过期')}const e=a.pactExpired;a.pactExpired=null;return e})(),
-  inbox:takeInbox(a),
+  pendingEvents:markShown(a),pactOffer:a.pactOffer&&time-a.pactOffer.t<60?{from:a.pactOffer.from,name:agents[a.pactOffer.from].name,secondsLeft:Math.round(60-(time-a.pactOffer.t))}:null,
+  pactExpired:(()=>{expirePact(a);const e=a.pactExpired;a.pactExpired=null;return e})(),
+  inbox:takeInbox(a),inboxNew:a.inboxFresh||0,
   zone:(()=>{const dc=Math.hypot(a.x-zone.cx,a.y-zone.cy),edge=zone.r-dc,rate=time>=zone.t0&&time<zone.t1?(zone.r0-zone.r1)/(zone.t1-zone.t0):0,dps=Math.round(a.maxhp*.04+2),sp=spd(a);
    return{cx:r1(zone.cx),cy:r1(zone.cy),r:r1(zone.r),finalR:zone.r1,shrinkStart:zone.t0,shrinkEnd:zone.t1,shrinkPerSec:+rate.toFixed(2),outside:outZone(a,0),distToCenter:Math.round(dc),distToEdge:Math.round(edge),
     secondsUntilOutside:edge>0?(time<zone.t0?Math.round(zone.t0-time+edge/((zone.r0-zone.r1)/(zone.t1-zone.t0))):rate>0?Math.round(edge/rate):null):0,dps,secondsToDieOutside:Math.floor(a.hp/dps),secondsToSafety:edge<0?Math.ceil(-edge/sp):0,mySpeed:+sp.toFixed(2)}})(),
@@ -149,7 +153,7 @@ function conv(a,c){const t=c.type;switch(t){
 function removeEvents(a,evs){if(!evs||!evs.length)return;for(const e of evs){const i=a.events.indexOf(e);if(i>=0)a.events.splice(i,1)}}
 function endTurn(a){a.timeoutStreak=0;const wall=a.thinking&&a.turnWall?((Date.now()-a.turnWall)/1000):0;if(wall)(a.lat=a.lat||[]).push(wall);
  if(a.thinking){a.thinking=false;a.decisions++;a.thinkTimes.push(Math.max(.1,time-a.turnStart))}
- removeEvents(a,a.turnEvents);a.turnEvents=null;a.inboxPending=null;a.lastTurnEnd=time;return wall}
+ removeEvents(a,(a.turnEvents||[]).concat(a.shownEvents||[]));a.turnEvents=null;a.shownEvents=null;a.inboxPending=null;a.lastTurnEnd=time;return wall}
 // 加点/回结盟/回话之后，如果计划还在跑、叫醒原因也都处理完了，就自动结束这一轮，免得模型以为还要 act
 function autoEnd(a,pref){if(!a.thinking||!a.plan[a.pi])return false;if(!a.events.every(e=>LOW_EV.includes(e)||pref.some(p=>String(e).startsWith(p))))return false;endTurn(a);return true}
 function setPlan(a,plan,thought,line,loop){const p=[],errs=[];(plan||[]).slice(0,5).forEach((c,i)=>{try{p.push(conv(a,c||{}))}catch(e){errs.push('第 '+(i+1)+' 条（'+(c&&c.type)+'）：'+e.message)}});
@@ -174,10 +178,10 @@ let _directSkip=null;
 function deliver(b,from,text,ex){if(!b.ext)return;pushMsg(b,Object.assign({from:from.id,name:from.name,channel:'direct',text,t:Math.round(time)},ex||{}));wake(b,(ex&&ex.channel=='ally'?'盟友密语：':'有人对你说话：')+from.name)}
 // NPC 定向情报（酒馆/公会/守卫报信等）：引擎调 notifyAgent，这里把正文投进模型收件箱
 if(typeof notifyAgent=='function'){const _notify=notifyAgent;notifyAgent=function(a,type,text,details){_notify(a,type,text,details);
-  if(!started||!a||!a.ext||a.dead)return;
+  if(!started||!a||!a.ext)return;
   pushMsg(a,{from:-1,name:'情报',channel:'npc',type,text:String(text),t:Math.round(time),plotId:details&&details.plotId!=null?details.plotId:undefined})}}
 // 统计空转时间；循环计划
-const _step=step;step=function(dt){if(started&&!over){const sp=typeof speed=='number'&&speed>0?speed:1;for(const a of agents)if(a.ext&&a.thinking){a.realThink=(a.realThink||0)+dt/sp;a.thinkLeft=EXT_TIMEOUT-a.realThink+dt}}_step(dt);if(!started||over)return;for(const a of agents){if(a.dead)continue;a.aliveT=(a.aliveT||0)+dt;if(!a.plan[a.pi])a.idleT2=(a.idleT2||0)+dt;
+const _step=step;step=function(dt){if(started&&!over){const sp=typeof speed=='number'&&speed>0?speed:1;for(const a of agents)if(a.ext&&a.thinking){a.realThink=(a.realThink||0)+dt/sp;a.thinkLeft=EXT_TIMEOUT-a.realThink+dt}}_step(dt);if(!started||over)return;for(const a of agents){if(a.ext&&a.pactOffer)expirePact(a);if(a.dead)continue;a.aliveT=(a.aliveT||0)+dt;if(!a.plan[a.pi])a.idleT2=(a.idleT2||0)+dt;
  if(a.ext&&a.loopSrc&&a.pi>=a.plan.length){a.plan=JSON.parse(a.loopSrc);a.pi=0;a.cmdT=0;a.path=[];const k=a.events.indexOf('计划完成');if(k>=0)a.events.splice(k,1)}}};
 const _end=endMatch;endMatch=function(){_end();try{const b=document.getElementById('endBody');const rows=seatsSummary().filter(x=>x.inMatch);
  b.innerHTML+='<p class="mini" style="margin-top:8px"><b>诊断</b></p><table><tr><th>选手</th><th>类型</th><th>决策</th><th>平均回复</th><th>超时代打</th><th>无效指令</th><th>空转</th></tr>'+rows.map(x=>'<tr><td>'+escH(x.name)+'</td><td>'+(x.ext?'MCP':'模拟')+'</td><td>'+x.decisions+'</td><td>'+(x.avgReplySec==null?'-':x.avgReplySec+'s')+'</td><td>'+x.timeouts+'</td><td>'+x.badCommands+'</td><td>'+x.idlePct+'%</td></tr>').join('')+'</table>'}catch(e){}};
@@ -189,7 +193,7 @@ const OPS={
   if(S.kind=='sim')throw new Error('这个座位被上帝放了模拟角色，请上帝在大厅移除后再接入');
   if(S.kind!='ext'){Object.assign(S,{kind:'ext',name:'座位'+(q.seat+1),st:DEF_ST.slice(),wep:MODELS[q.seat].wep,spec:SPRITES[q.seat],setup:false,spriteOk:false})}
   if(q.name){S.name=String(q.name).slice(0,24)}const a=seatAgent[q.seat];if(a&&q.name)a.name=S.name;
-  log('c-world','🔌 '+S.name+' 通过 MCP 接入了 '+(q.seat+1)+' 号位');lobby();return{ok:true,seat:q.seat,name:S.name,started}},
+  log('c-world','🔌 '+S.name+' 通过 MCP 接入了 '+(q.seat+1)+' 号位',started?RALL():[]);lobby();return{ok:true,seat:q.seat,name:S.name,started}},
  setup(_,q){const S=SEATS[q.seat];if(started)throw new Error('比赛已开始，不能再改角色');if(S.kind!='ext')throw new Error('先 join');const st=q.stats;
   if(!Array.isArray(st)||st.length!=6||st.some(v=>!Number.isInteger(v)||v<1||v>10)||st.reduce((s,v)=>s+v,0)!=30)throw new Error('stats 必须是 6 个 1-10 的整数，总和 30，顺序：力量 敏捷 体质 智力 魅力 感知');
   if(!['sword','staff','bow','dagger'].includes(q.weapon))throw new Error('weapon 只能是 sword/staff/bow/dagger');
@@ -205,11 +209,11 @@ const OPS={
   if(q.keep||!q.plan){if(!q.keep)throw new Error('缺 plan。不改计划、只想结束这一轮，用 act{keep:true}');endTurn(a);if(q.thought){say(a,String(q.thought).slice(0,120));log('c-think','💭 '+a.name+'：'+String(q.thought).slice(0,120))}if(q.say)talk(a,q.say);const po=a.pactOffer&&time-a.pactOffer.t<60;return{ok:true,kept:true,plan:a.plan.slice(a.pi).map(cmdNameId),note:po?'还有 '+agents[a.pactOffer.from].name+' 的结盟请求没回复，先 answer_pact，否则会一直被叫醒':undefined}}const r=setPlan(a,q.plan,q.thought,q.say,q.loop);if(a.dead)r.respawnIn=Math.ceil(a.dead),r.note='你现在阵亡中，计划已保存，在城区复活后立刻执行';return r},
  allocate(a,q){const add=STK.map(k=>Math.max(0,q[k]|0)),n=add.reduce((s,v)=>s+v,0);if(!n)throw new Error('至少加 1 点');if(n>(a.pts||0))throw new Error('只有 '+(a.pts||0)+' 点可分');
   add.forEach((v,i)=>a.st[i]+=v);a.pts-=n;a.maxhp=maxHp(a);const txt=add.map((v,i)=>v?SN[i]+'+'+v:'').filter(Boolean).join('、');
-  log('c-cap','📈 '+a.name+' 分配属性点：'+txt+(q.reason?'（'+String(q.reason).slice(0,40)+'）':''));const done=autoEnd(a,['升级加点']);return{ok:true,stats:Object.fromEntries(STK.map((k,i)=>[k,a.st[i]])),left:a.pts,turnEnded:done||undefined,note:done?'计划还在跑，这一轮已结束，直接 wait_for_event':undefined}},
+  log('c-cap','📈 '+a.name+' 分配属性点：'+txt+(q.reason?'（'+String(q.reason).slice(0,40)+'）':''),RC(a));const done=autoEnd(a,['升级加点']);return{ok:true,stats:Object.fromEntries(STK.map((k,i)=>[k,a.st[i]])),left:a.pts,turnEnded:done||undefined,note:done?'计划还在跑，这一轮已结束，直接 wait_for_event':undefined}},
  answer_pact(a,q){const o=a.pactOffer;a.pactOffer=null;if(!o||time-o.t>60)throw new Error('没有待回复的结盟请求，或已过期（60 秒）');const f=agents[o.from];
-  if(f.dead||dist(a,f)>vis(a)+6){log('c-pact','🚶 '+f.name+' 已经走远，'+a.name+' 的回复没送到');return{ok:false,reason:'对方已离开'}}
+  if(f.dead||dist(a,f)>vis(a)+6){log('c-pact','🚶 '+f.name+' 已经走远，'+a.name+' 的回复没送到',RC(a));return{ok:false,reason:'对方已离开'}}
   if(q.say)talk(a,q.say);if(q.accept){acceptPact(a,f);const d=autoEnd(a,['当面结盟请求','新盟友','有人对你说话']);return{ok:true,allied:f.name,turnEnded:d||undefined}}
-  if(!q.say)bub(a,'不了，各走各的。',.2);log('c-pact','✋ '+a.name+' 当面拒绝了 '+f.name);say(f,a.name+'拒绝了。');const d=autoEnd(a,['当面结盟请求','有人对你说话']);return{ok:true,allied:null,turnEnded:d||undefined}},
+  if(!q.say)bub(a,'不了，各走各的。',.2);log('c-pact','✋ '+a.name+' 当面拒绝了 '+f.name,RC(a,f));say(f,a.name+'拒绝了。');if(f.ext)notifyAgent(f,'结盟被拒','#'+a.id+' '+a.name+' 拒绝了你的结盟请求');const d=autoEnd(a,['当面结盟请求','有人对你说话']);return{ok:true,allied:null,turnEnded:d||undefined}},
  talk(a,q){const text=String(q.text||'').slice(0,60);if(!text)throw new Error('text 不能为空');
   if(q.ally){const al=[...a.allies].map(i=>agents[i]).filter(b=>b&&!b.dead);if(!al.length)throw new Error('你还没有盟友，ally 频道没人听');
    for(const b of al)deliver(b,a,text,{channel:'ally',toYou:true});log('c-talk','🤫 '+a.name+' → 盟友：'+text);const d=autoEnd(a,['有人对你说话','盟友密语']);return{ok:true,heardBy:al.map(b=>b.name),turnEnded:d||undefined}}
@@ -228,7 +232,7 @@ function seatsSummary(){return SEATS.map(S=>{const a=seatAgent[S.seat];const r={
 const EXECUTED=new Map();let outbox=[];
 const HOST_HDR={'content-type':'application/json'};
 function hostHeaders(){const h=Object.assign({},HOST_HDR);if(window.ARENA_BRIDGE_KEY)h['x-arena-key']=window.ARENA_BRIDGE_KEY;return h}
-async function pump(){for(;;){
+async function pump(){if(!window.ARENA_BRIDGE_KEY){console.warn('没有宿主密钥：请用服务器控制台打印的地址打开游戏');return}for(;;){
  if(outbox.length){replies=outbox.concat(replies);outbox=[]}
  try{outbox=replies.splice(0);
   const r=await fetch(BASE+'/bridge/poll',{method:'POST',headers:hostHeaders(),body:JSON.stringify({replies:outbox,seats:seatsSummary(),hasInfo:!!INFO,started,over,time:Math.round(time)})});
@@ -301,7 +305,7 @@ function report(o,a){if(!o||o.lobby){const s=o||{};return '【大厅】还没开
 const WATCH=[];
 function peekRes(seat,q){try{const a=started?seatOf(seat):null;return{ok:OPS.peek(a,Object.assign({seat},q))}}catch(e){return{error:String(e&&e.message||e)}}}
 function fmt(res,q,seat){if(res.ok&&q.format=='report'&&(res.ok.ready||q.final||!started)){const r=res.ok;let a=null;try{a=started?seatOf(seat):null}catch(e){}
-  res={ok:{ready:r.ready,turn:r.turn,over:r.over,lobby:r.lobby||undefined,secondsUntilTimeout:r.secondsUntilEngineTakesOver,planRunning:!!(a&&a.plan[a.pi]&&!(a.pactOffer&&time-a.pactOffer.t<60)),pactPending:!!(a&&a.pactOffer&&time-a.pactOffer.t<60),hasNew:!!(r.ready||(r.inbox&&r.inbox.length)||(r.pendingEvents&&r.pendingEvents.length)),report:report(r,a)}}}return res}
+  res={ok:{ready:r.ready,turn:r.turn,over:r.over,lobby:r.lobby||undefined,secondsUntilTimeout:r.secondsUntilEngineTakesOver,planRunning:!!(a&&a.plan[a.pi]&&!(a.pactOffer&&time-a.pactOffer.t<60)),pactPending:!!(a&&a.pactOffer&&time-a.pactOffer.t<60),hasNew:!!(r.ready||r.inboxNew),report:report(r,a)}}}return res}
 function checkWatch(){const now=Date.now();for(let i=WATCH.length-1;i>=0;i--){const w=WATCH[i];let res;
   if(!started){if(now<w.until)continue;res=fmt(peekRes(w.seat,{final:true,brief:w.q.brief}),Object.assign({final:true},w.q),w.seat)}
   else{const r=peekRes(w.seat,{brief:w.q.brief});if(r.error||r.ok.ready)res=fmt(r,w.q,w.seat);else if(now>=w.until)res=fmt(peekRes(w.seat,{final:true,brief:w.q.brief}),Object.assign({final:true},w.q),w.seat);else continue}

@@ -1,5 +1,5 @@
 // 像素竞技场 · 本地 MCP 服务器（零依赖，Node 18+）
-// 用法：node server.js     然后浏览器打开 http://localhost:8787
+// 用法：node server.js     然后用浏览器打开终端打印的宿主地址（http://localhost:8787/?key=…）
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
 const PORT=+process.env.PORT||8787,HOST=process.env.HOST||'127.0.0.1';
 const BASE=process.env.PUBLIC_URL||('http://localhost:'+PORT);
@@ -9,16 +9,20 @@ const TOKF=path.join(DIR,'.arena-tokens.json');let saved={};try{if(!process.argv
 const SEATS=[0,1,2,3,4,5,6,7].map(i=>({seat:i,token:process.env['ARENA_TOKEN_'+i]||saved[i]||('s'+(i+1)+'-'+crypto.randomBytes(3).toString('hex'))}));
 try{fs.writeFileSync(TOKF,JSON.stringify(Object.fromEntries(SEATS.map(s=>[s.seat,s.token])),null,1))}catch(e){}
 const byToken=Object.fromEntries(SEATS.map(s=>[s.token,s]));
-// 宿主密钥：每次启动随机生成，只注入到游戏页面里。/bridge/*（页面心跳桥）和完整版 /status 需要它，
-// 防止拿到某个座位令牌的模型客户端冒充宿主、读到其他座位的令牌。能打开游戏页面的本机用户视为宿主。
-const BRIDGE_KEY=crypto.randomBytes(16).toString('hex');
+// 宿主密钥：/bridge/*（页面心跳桥）和完整版 /status 需要它，防止拿到座位令牌的模型客户端冒充宿主、读到其他座位的令牌。
+// 密钥只打印在服务器控制台（宿主用带 ?key= 的地址打开游戏页），不带密钥访问 / 拿不到它——否则任何能连上 BASE 的模型 curl 一下首页就有了。
+// 和座位令牌一样存进本地文件，重启不变；--rotate 或环境变量 ARENA_BRIDGE_KEY 可更换。
+const KEYF=path.join(DIR,'.arena-hostkey');
+const BRIDGE_KEY=process.env.ARENA_BRIDGE_KEY||(()=>{try{if(!process.argv.includes('--rotate')){const k=fs.readFileSync(KEYF,'utf8').trim();if(/^[0-9a-f]{32}$/.test(k))return k}}catch(e){}const k=crypto.randomBytes(16).toString('hex');try{fs.writeFileSync(KEYF,k,{mode:0o600})}catch(e){}return k})();
+const HOST_URL=BASE+'/?key='+BRIDGE_KEY;
+function keyEq(v){return typeof v=='string'&&v.length==BRIDGE_KEY.length&&crypto.timingSafeEqual(Buffer.from(v),Buffer.from(BRIDGE_KEY))}
 
 // ---------- 与游戏页面的长轮询桥 ----------
 let queue=[],held=null,lastPoll=0,pageState={seats:[],started:false,over:false,time:0},rid=0;const waiters=new Map();let infoSent=0;const joinedAt={};const cache={};
 function flush(){if(held&&queue.length){const r=held;held=null;clearTimeout(r.t);send(r.res,200,queue.splice(0))}}
 // 页面是否在线：有挂起的长轮询就算在线；否则 20 秒内轮询过也算（请求会排队等下一轮心跳）
 function pageGap(){return held?0:Date.now()-lastPoll}
-function pageDownMsg(){const g=pageGap();return g>60000||!lastPoll?'游戏页面没打开或已关闭：请在浏览器打开 '+BASE:'游戏页面心跳延迟 '+Math.round(g/1000)+' 秒：标签页可能被浏览器放到后台冻结了。请把游戏放在单独的浏览器窗口里，不要最小化'}
+function pageDownMsg(){const g=pageGap();return g>60000||!lastPoll?'游戏页面没打开或已关闭：请让宿主用服务器控制台打印的游戏地址（带 key）在浏览器打开':'游戏页面心跳延迟 '+Math.round(g/1000)+' 秒：标签页可能被浏览器放到后台冻结了。请把游戏放在单独的浏览器窗口里，不要最小化'}
 function callPage(seat,op,args,ms,reuseId){return new Promise(resolve=>{if(pageGap()>20000)return resolve({error:pageDownMsg(),heartbeat:true});
  const id=reuseId||++rid;const t=setTimeout(()=>{waiters.delete(id);resolve({error:'游戏页面响应超时（'+pageDownMsg()+'）',heartbeat:true})},ms||20000);waiters.set(id,{resolve,t});queue.push({rid:id,seat,op,args});flush()})}
 function onPoll(req,res,body){lastPoll=Date.now();for(const r of body.replies||[]){const w=waiters.get(r.rid);if(w){clearTimeout(w.t);waiters.delete(r.rid);w.resolve(r.res)}}
@@ -223,22 +227,23 @@ Write-Host '以后每局开局，模型跑 arena.mjs update 会把上面所有�
 // ---------- HTTP ----------
 function send(res,code,obj,type){if(res.writableEnded)return;const b=typeof obj=='string'?obj:JSON.stringify(obj);res.writeHead(code,{'content-type':type||'application/json; charset=utf-8','access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-expose-headers':'Mcp-Session-Id, MCP-Protocol-Version','cache-control':'no-store'});res.end(b)}
 function readBody(req){return new Promise(r=>{let d='';req.on('data',c=>{d+=c;if(d.length>4e6)req.destroy()});req.on('end',()=>{try{r(d?JSON.parse(d):{})}catch(e){r({__bad:1})}})})}
-function page(){let h=fs.readFileSync(path.join(DIR,'arena.html'),'utf8');const inj='<script>window.ARENA_BRIDGE=location.origin;window.ARENA_BRIDGE_KEY="'+BRIDGE_KEY+'"</script><script src="/bridge.js"></script>';return h.includes('</body>')?h.replace('</body>',inj+'</body>'):h+inj}
+function page(){let h=fs.readFileSync(path.join(DIR,'arena.html'),'utf8');const inj='<script>window.ARENA_BRIDGE=location.origin;window.ARENA_BRIDGE_KEY="'+BRIDGE_KEY+'";try{history.replaceState(null,"",location.pathname)}catch(e){}</script><script src="/bridge.js"></script>';return h.includes('</body>')?h.replace('</body>',inj+'</body>'):h+inj}
+const NOKEY_PAGE='<!doctype html><meta charset="utf-8"><title>像素竞技场</title><body style="font:16px/1.7 system-ui;background:#111;color:#ddd;padding:40px"><h2>需要宿主地址</h2><p>游戏页面只给宿主打开：请用服务器启动时控制台打印的地址（形如 <code>/?key=…</code>）。</p><p>选手（模型）不需要打开这个页面，用座位地址 <code>/mcp/&lt;令牌&gt;</code> 接入即可。</p></body>';
 
 http.createServer(async(req,res)=>{const u=new URL(req.url,'http://x');
  if(req.method=='OPTIONS')return send(res,204,'');
- if(u.pathname=='/'||u.pathname=='/index.html')return send(res,200,page(),'text/html; charset=utf-8');
+ if(u.pathname=='/'||u.pathname=='/index.html')return keyEq(u.searchParams.get('key'))?send(res,200,page(),'text/html; charset=utf-8'):send(res,403,NOKEY_PAGE,'text/html; charset=utf-8');
  if(u.pathname=='/bridge.js')return send(res,200,fs.readFileSync(path.join(DIR,'bridge.js'),'utf8'),'text/javascript; charset=utf-8');
  if(u.pathname=='/replay.js')return send(res,200,fs.readFileSync(path.join(DIR,'replay.js'),'utf8'),'text/javascript; charset=utf-8');
- if(u.pathname=='/bridge/poll'&&req.method=='POST'){if(hdr(req,'x-arena-key')!==BRIDGE_KEY)return send(res,403,{error:'宿主密钥不对：/bridge/* 只接受游戏页面自己'});const b=await readBody(req);return onPoll(req,res,b)}
- if(u.pathname=='/bridge/reply'&&req.method=='POST'){if(hdr(req,'x-arena-key')!==BRIDGE_KEY)return send(res,403,{error:'宿主密钥不对：/bridge/* 只接受游戏页面自己'});const b=await readBody(req);lastPoll=Date.now();for(const r of b.replies||[]){const w=waiters.get(r.rid);if(w){clearTimeout(w.t);waiters.delete(r.rid);w.resolve(r.res)}}return send(res,200,{ok:true})}
+ if(u.pathname=='/bridge/poll'&&req.method=='POST'){if(!keyEq(hdr(req,'x-arena-key')))return send(res,403,{error:'宿主密钥不对：/bridge/* 只接受游戏页面自己'});const b=await readBody(req);return onPoll(req,res,b)}
+ if(u.pathname=='/bridge/reply'&&req.method=='POST'){if(!keyEq(hdr(req,'x-arena-key')))return send(res,403,{error:'宿主密钥不对：/bridge/* 只接受游戏页面自己'});const b=await readBody(req);lastPoll=Date.now();for(const r of b.replies||[]){const w=waiters.get(r.rid);if(w){clearTimeout(w.t);waiters.delete(r.rid);w.resolve(r.res)}}return send(res,200,{ok:true})}
  if(u.pathname=='/skill/manifest.json')return send(res,200,skillManifest());
  if(u.pathname=='/skill/install.ps1')return send(res,200,installPs1(BASE),'text/plain; charset=utf-8');
  if(u.pathname=='/skill/install.sh')return send(res,200,installSh(BASE),'text/x-shellscript; charset=utf-8');
  if(u.pathname.startsWith('/skill/file/')){const rel=decodeURIComponent(u.pathname.slice(12));if(!skillFiles().includes(rel))return send(res,404,{error:'没有这个文件'});return send(res,200,fs.readFileSync(path.join(SKILL_DIR,rel),'utf8'),rel.endsWith('.json')?'application/json; charset=utf-8':'text/plain; charset=utf-8')}
  // /status 无密钥时只回在线状态；带宿主密钥才给完整座位数据（含令牌），防止选手客户端互相拿到凭证
  if(u.pathname=='/status'){const live=Date.now()-lastPoll<5000;
-  if(hdr(req,'x-arena-key')!==BRIDGE_KEY)return send(res,200,{page:live,started:pageState.started,over:pageState.over,time:pageState.time});
+  if(!keyEq(hdr(req,'x-arena-key')))return send(res,200,{page:live,started:pageState.started,over:pageState.over,time:pageState.time});
   return send(res,200,{page:live,...pageState,seats:SEATS.map(s=>({...s,...(pageState.seats[s.seat]||{})}))})}
  const m=u.pathname.match(/^\/mcp\/([\w-]+)\/?$/);
  if(m){const seat=byToken[m[1]];
@@ -257,5 +262,5 @@ http.createServer(async(req,res)=>{const u=new URL(req.url,'http://x');
   if(body.method=='initialize')res.setHeader('Mcp-Session-Id',crypto.randomUUID());
   return send(res,200,out)}
  send(res,404,{error:'not found'})}).listen(PORT,HOST,()=>{
- console.log('\n像素竞技场 MCP 服务器已启动');console.log('1) 浏览器打开 '+BASE+' ，保持标签页在前台');console.log('2) 每个模型用一个座位地址接入（Streamable HTTP）：');
+ console.log('\n像素竞技场 MCP 服务器已启动');console.log('1) 宿主用浏览器打开（含宿主密钥，别发给选手）：'+HOST_URL+' ，保持标签页在前台');console.log('2) 每个模型用一个座位地址接入（Streamable HTTP）：');
  SEATS.forEach(s=>console.log('   '+(s.seat+1)+' 号位  '+BASE+'/mcp/'+s.token));console.log('3) 都接好后，在页面上点「开战」。未接入的座位由引擎模拟。\n')});

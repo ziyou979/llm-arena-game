@@ -485,6 +485,10 @@ const fmt=s=>{s=Math.max(0,s);return String(Math.floor(s/60)).padStart(2,'0')+':
 function say(a,t){a.thoughts.unshift(t);if(a.thoughts.length>4)a.thoughts.pop()}
 // 桥接层可覆盖此函数，将正文及 details 定向写入收件人的 inbox。
 function notifyAgent(a,type,text,details={}){say(a,text);wake(a,type)}
+// 日志收件人：RC(当事人…) 只给这些选手；RALL() 全场公告；RSEE(e) 给能看到 e 的选手（含盟友共享视野）
+const RC=(...xs)=>xs.filter(x=>x&&x.st&&agents.indexOf(x)>=0).map(x=>x.id);
+const RALL=()=>agents.map(x=>x.id);
+const RSEE=e=>agents.filter(b=>b==e||(!b.dead&&sees(b,e))).map(b=>b.id);
 function director(x,y,label,pri,e){if(!DIRECTOR)return;if(focus&&focus.pri>pri&&focus.t>0)return;focus={x,y,label,t:6,pri,e:e||null}}
 // 自动导播：提前切到快要出事的地方；没事时按看点轮换跟拍，每人至少 10 秒；手动点选手卡后 30 秒内不自动切
 let DIRS={acc:0,since:-99,manualT:-99,pd:{},once:{},feat:{}};
@@ -503,7 +507,7 @@ function directorTick(dt){if(!DIRECTOR||!started||over)return;DIRS.acc+=dt;if(DI
 // ---------- perception ----------
 function seeOne(a,b){const d=dist(a,b);if(inBush(b)&&d>1.5+a.st[5]*.25)return false;return d<=vis(a)}
 function sees(a,b){if(b.dead)return false;if(seeOne(a,b))return true;for(const id of a.allies){const c=agents[id];if(!c.dead&&seeOne(c,b))return true}return false}
-function updatePerception(){for(const a of agents){if(a.dead)continue;for(const b of agents){if(a==b||b.dead)continue;if(sees(a,b)){if(!a.known.has(b.id)){a.known.add(b.id);log('c-see','👀 '+a.name+' 第一次发现了 '+b.name+(inBush(b)?'（在草丛里）':''));wake(a,'发现新对手')}a.lastSeen[b.id]={x:b.x,y:b.y,t:time}}}}}
+function updatePerception(){for(const a of agents){if(a.dead)continue;for(const b of agents){if(a==b||b.dead)continue;if(sees(a,b)){if(!a.known.has(b.id)){a.known.add(b.id);log('c-see','👀 '+a.name+' 第一次发现了 '+b.name+(inBush(b)?'（在草丛里）':''),RC(a));wake(a,'发现新对手')}a.lastSeen[b.id]={x:b.x,y:b.y,t:time}}}}}
 // ---------- thinking ----------
 function wake(a,ev){if(a.events.indexOf(ev)<0)a.events.push(ev)}
 function tryThink(a){if(a.thinking||!a.events.length||a.dead)return;a.decT=a.decT.filter(t=>time-t<60);if(a.decT.length>=DPM)return;
@@ -522,13 +526,13 @@ const zoneR=()=>zone.r;
 const outZone=(e,m)=>Math.hypot(e.x-zone.cx,e.y-zone.cy)>zone.r-(m||0);
 const capCost=(a,p)=>dist(a,{x:p.cx,y:p.cy})+(p.owner>=0?10:0)+(a.intel>time-150&&p.owner>=0?hires(p).length*4:0)-(a.hint==p.id&&a.hintT>time-150?25:0);
 function answerPact(a,from){const P=a.m.per;if(a.allies.has(from.id)||from.dead)return;let pr=.25+P.diplo*.45+from.st[4]*.03-(from.betrayer?.45:0)-(a.allies.size?.25:0);a.thoughts.length;
- if(R()<pr){bub(a,'成交。',1);a.allies.add(from.id);from.allies.add(a.id);a.known.add(from.id);from.known.add(a.id);log('c-pact','🤝 '+a.name+' 当场接受了 '+from.name+' 的结盟（共享视野）');say(a,'和'+from.name+'当面谈妥，结盟，视野共享。');say(from,a.name+'答应了。');banner2('🤝 '+from.name+' × '+a.name+' 结盟');director(a.x,a.y,'结盟',2);wake(a,'新盟友');wake(from,'新盟友')}
- else{bub(a,from.betrayer?'你？不跟。':'没兴趣，各走各的。',1);log('c-pact','✋ '+a.name+' 当面拒绝了 '+from.name+(from.betrayer?'（对方有背信记录）':''));say(a,from.betrayer?'有背信记录的人，不跟。':'现在结盟对我没好处。');say(from,a.name+'拒绝了。')}}
+ if(R()<pr){bub(a,'成交。',1);a.allies.add(from.id);from.allies.add(a.id);a.known.add(from.id);from.known.add(a.id);log('c-pact','🤝 '+a.name+' 当场接受了 '+from.name+' 的结盟（共享视野）',RC(a,from));say(a,'和'+from.name+'当面谈妥，结盟，视野共享。');say(from,a.name+'答应了。');banner2('🤝 '+from.name+' × '+a.name+' 结盟');director(a.x,a.y,'结盟',2);wake(a,'新盟友');notifyAgent(from,'新盟友','#'+a.id+' '+a.name+' 接受了你的结盟（共享视野）')}
+ else{bub(a,from.betrayer?'你？不跟。':'没兴趣，各走各的。',1);if(from.ext)notifyAgent(from,'结盟被拒','#'+a.id+' '+a.name+' 拒绝了你的结盟请求');log('c-pact','✋ '+a.name+' 当面拒绝了 '+from.name+(from.betrayer?'（对方有背信记录）':''),RC(a,from));say(a,from.betrayer?'有背信记录的人，不跟。':'现在结盟对我没好处。');say(from,a.name+'拒绝了。')}}
 function brainHeur(a,ev){const P=a.m.per,plan=[];allocate(a);
  while(a.pending.length){answerPact(a,agents[a.pending.shift()])}
  while(0){const from=null;let pr=.25+P.diplo*.45+from.st[4]*.03-(from.betrayer?.45:0)-(a.allies.size?.25:0);
-  if(dist(a,from)>vis(a)+4){log('c-pact','🚶 '+from.name+' 的结盟请求作废：'+a.name+' 已经走远');continue}if(R()<pr){bub(a,'成交。');a.allies.add(from.id);from.allies.add(a.id);a.known.add(from.id);from.known.add(a.id);log('c-pact','🤝 '+a.name+' 接受了 '+from.name+' 的结盟（共享视野）');say(a,'和'+from.name+'结盟，视野也共享了。');banner2('🤝 '+from.name+' × '+a.name+' 结盟');director(a.x,a.y,'结盟',2)}
-  else{bub(a,from.betrayer?'你？不跟。':'没兴趣。');log('c-pact','✋ '+a.name+' 拒绝了 '+from.name+(from.betrayer?'（对方有背信记录）':''));say(a,from.betrayer?'有背信记录的人，不跟。':'现在结盟对我没好处。')}}
+  if(dist(a,from)>vis(a)+4){log('c-pact','🚶 '+from.name+' 的结盟请求作废：'+a.name+' 已经走远',RC(a,from));continue}if(R()<pr){bub(a,'成交。');a.allies.add(from.id);from.allies.add(a.id);a.known.add(from.id);from.known.add(a.id);log('c-pact','🤝 '+a.name+' 接受了 '+from.name+' 的结盟（共享视野）',RC(a,from));say(a,'和'+from.name+'结盟，视野也共享了。');banner2('🤝 '+from.name+' × '+a.name+' 结盟');director(a.x,a.y,'结盟',2)}
+  else{bub(a,from.betrayer?'你？不跟。':'没兴趣。');log('c-pact','✋ '+a.name+' 拒绝了 '+from.name+(from.betrayer?'（对方有背信记录）':''),RC(a,from));say(a,from.betrayer?'有背信记录的人，不跟。':'现在结盟对我没好处。')}}
  if(time>zone.t0-20){const need=zone.t1>time?zone.r0-(zone.r0-zone.r1)*Math.min(1,Math.max(0,(time+20-zone.t0)/(zone.t1-zone.t0))):zone.r1;if(Math.hypot(a.x-zone.cx,a.y-zone.cy)>need-3){plan.push({t:'zone'});say(a,'毒圈要收了，先往圈里走。')}}
  if(P.treach>.5)for(const id of [...a.allies]){const b=agents[id];if(!b.dead&&b.hp<b.maxhp*.45&&dist(a,b)<vis(a)&&R()<P.treach*.8&&time>90){plan.push({t:'betray',id});say(a,b.name+'残血了……生意就是生意。');break}}
  if(ev.includes('被攻击')&&a.lastHitBy!=null&&!a.allies.has(a.lastHitBy)&&power(a)>power(agents[a.lastHitBy])*.85)plan.push({t:'attack',id:a.lastHitBy});
@@ -537,8 +541,8 @@ function brainHeur(a,ev){const P=a.m.per,plan=[];allocate(a);
  if(bounty>=0&&bounty!=a.id&&!a.allies.has(bounty)&&sees(a,agents[bounty])&&P.aggr>.4&&power(a)>power(agents[bounty])*.75&&R()<.6){plan.push({t:'attack',id:bounty});say(a,agents[bounty].name+'身上有 '+bountyAmt+' 金悬赏。')}
  for(const n of MER){if(n.dead||n.sos<=0||n.rescuedInc==n.incident||dist(a,n)>vis(a)+8||a.plan.some(c=>c.t=='rescue'&&c.id==n.id))continue;
   const sus=n.shady&&(a.st[5]>=6||a.knowShady);let pr=.2+P.diplo*.35+P.econ*.25-(a.hp<a.maxhp*.5?.3:0)-(sus?.45:0)-(n.exposed?.8:0);
-  if(R()<pr){plan.unshift({t:'rescue',id:n.id});STAT.go++;say(a,'去救'+n.name+'，救下来应该有报酬。');log('c-trade','🛟 '+a.name+' 决定去救 '+n.name)}
-  else{say(a,sus?n.name+'眼神不对劲，我不救。':n.exposed?'那是奸商，活该。':'救商人不划算，干自己的事。');log('c-trade','🤷 '+a.name+' 决定不救 '+n.name+(sus?'（感知看出对方可疑）':''))}}
+  if(R()<pr){plan.unshift({t:'rescue',id:n.id});STAT.go++;say(a,'去救'+n.name+'，救下来应该有报酬。');log('c-trade','🛟 '+a.name+' 决定去救 '+n.name,RC(a))}
+  else{say(a,sus?n.name+'眼神不对劲，我不救。':n.exposed?'那是奸商，活该。':'救商人不划算，干自己的事。');log('c-trade','🤷 '+a.name+' 决定不救 '+n.name+(sus?'（感知看出对方可疑）':''),RC(a))}}
  if(a.wt<1&&a.gold>=price(a,'weapon'))plan.push({t:'buy',item:'weapon'});
  else if(!a.items.armor&&a.gold>=price(a,'armor')+10&&P.econ>.35)plan.push({t:'buy',item:'armor'});
  else if(!a.items.helmet&&a.items.armor&&a.gold>=price(a,'helmet')+10)plan.push({t:'buy',item:'helmet'});
@@ -651,22 +655,22 @@ function allocate(a){if(!a.pts)return;const w=[1,1,1.5,1,1,1],P=a.m.per,wep=a.m.
  if(bounty==a.id){w[2]+=2;why.push([2,'被悬赏了，加体质保命'])}
  const add=[0,0,0,0,0,0];while(a.pts>0){const tot=w.reduce((s,v)=>s+v,0);let r=R()*tot,i=0;while(i<5&&r>w[i]){r-=w[i];i++}add[i]++;a.st[i]++;w[i]*=.55;a.pts--}
  a.maxhp=maxHp(a);const txt=add.map((v,i)=>v?SN[i]+'+'+v:'').filter(Boolean).join('、');const wy=(why.find(x=>add[x[0]])||[0,''])[1];
- STAT.alloc++;log('c-cap','📈 '+a.name+' 分配属性点：'+txt+(wy?'（'+wy+'）':''));say(a,'加点 '+txt+'。'+(wy||'按我的路线走。'))}
-function merchantHit(n,src){n.hit=.12;if(src&&src.lv){if(n.sos<=0||n.rescuedInc==n.incident){n.incident++;STAT.sos++;log('c-trade','🆘 '+n.name+' 被野怪缠上了，正在呼救');director(n.x,n.y,'商人求救',2);for(const a of agents)if(!a.dead&&dist(a,n)<vis(a)+8)wake(a,'商人求救')}n.sos=15}}
+ STAT.alloc++;log('c-cap','📈 '+a.name+' 分配属性点：'+txt+(wy?'（'+wy+'）':''),RC(a));say(a,'加点 '+txt+'。'+(wy||'按我的路线走。'))}
+function merchantHit(n,src){n.hit=.12;if(src&&src.lv){if(n.sos<=0||n.rescuedInc==n.incident){n.incident++;STAT.sos++;log('c-trade','🆘 '+n.name+' 被野怪缠上了，正在呼救',agents.filter(b=>!b.dead&&dist(b,n)<vis(b)+8).map(b=>b.id));director(n.x,n.y,'商人求救',2);for(const a of agents)if(!a.dead&&dist(a,n)<vis(a)+8)notifyAgent(a,'商人求救','商人 '+n.name+' 在 ('+Math.round(n.x)+','+Math.round(n.y)+') 被野怪缠上，正在呼救')}n.sos=15}}
 function killMerchant(n,src){STAT.mdead++;n.dead=40;n.hp=0;n.sos=0;sparks(n.x,n.y,'#ffd166',12);log('c-trade','💀 '+n.name+' 被野怪击倒，40 秒后在别处重新出摊'+(n.shady&&!n.exposed?'':''))}
 function rescueDone(a,n){n.rescuedInc=n.incident;n.sos=0;n.rescuer=a.id;a.rescues++;
  if(n.shady&&!n.exposed&&(a.wt>=1||a.gold>=60||a.items.armor)&&R()<.6){n.exposed=true;STAT.stab++;const steal=Math.round(a.gold*.35);a.gold-=steal;a.stabbed=time;n.stab=.3;
   damage(n,a,Math.round(a.maxhp*.22),false,{kb:.6,stop:.1,crit:true});
-  log('c-betray','🗡 奸商背刺！'+n.name+' 被救下后盯上 '+a.name+'的'+(a.wt>=2?wname(a):'钱袋')+'，反手一刀，顺走 '+steal+' 金');banner2('🗡 奸商背刺！'+n.name+' 捅了救命恩人 '+a.name);director(n.x,n.y,'奸商背刺',5);
-  say(a,'救了你还捅我？'+n.name+'，记住了。');wake(a,'被奸商背刺');const an=R()*6.28;n.tgt={x:Math.round(n.x+Math.cos(an)*12),y:Math.round(n.y+Math.sin(an)*12)};n.wait=0;n.run=4;return}
+  log('c-betray','🗡 奸商背刺！'+n.name+' 被救下后盯上 '+a.name+'的'+(a.wt>=2?wname(a):'钱袋')+'，反手一刀，顺走 '+steal+' 金',RC(a));banner2('🗡 奸商背刺！'+n.name+' 捅了救命恩人 '+a.name);director(n.x,n.y,'奸商背刺',5);
+  notifyAgent(a,'被奸商背刺','救下的'+n.name+'是奸商，反手一刀顺走你 '+steal+' 金');say(a,'救了你还捅我？'+n.name+'，记住了。');const an=R()*6.28;n.tgt={x:Math.round(n.x+Math.cos(an)*12),y:Math.round(n.y+Math.sin(an)*12)};n.wait=0;n.run=4;return}
  STAT.saved++;if(n.shady&&!n.exposed){STAT.stabSkip++;log('c-trade','🤔 （观众视角）'+n.name+' 其实是奸商，打量了 '+a.name+' 一眼，这次没下手')}let r;if(a.wt<1){a.wt=1;r=wname(a)}else if(!a.items.armor){a.items.armor=1;r='皮甲'}else if(!a.items.helmet){a.items.helmet=1;r='铁盔'}else if(a.wt<2&&R()<.5){a.wt=2;r=wname(a)+'（稀有）'}else{a.items.potion=(a.items.potion||0)+2;a.gold+=40;r='红药水×2 + 40 金'}
  a.maxhp=maxHp(a);composeSprite(a);buildCardPortrait(a);sparks(n.x,n.y,'#ffd166',12);fx.push({x:a.x,y:a.y,t:1,txt:'报酬!',c:'#ffd166'});
- log('c-trade','🎁 '+a.name+' 救下 '+n.name+'，获赠「'+r+'」');banner2('🎁 '+a.name+' 救下 '+n.name);director(n.x,n.y,'解救商人',3)}
+ log('c-trade','🎁 '+a.name+' 救下 '+n.name+'，获赠「'+r+'」',RC(a));banner2('🎁 '+a.name+' 救下 '+n.name);director(n.x,n.y,'解救商人',3)}
 function safeSpot(minD,o){let best=null,bs=-99;const pl=plots.filter(p=>!outZone({x:p.cx,y:p.cy},6));for(let k=0;k<24;k++){let p=pick(pl.length?pl:plots),q=randIn(p);if(o&&k<18){const xx=Math.round(o.x+rnd(-30,30)),yy=Math.round(o.y+rnd(-30,30));const pp=plotAt(xx,yy);if(!pp||!walk(xx,yy)||outZone({x:xx,y:yy},6))continue;p=pp;q={x:xx,y:yy}}if(q.x>=TOWN.x0-1&&q.x<=TOWN.x1+1&&q.y>=TOWN.y0-1&&q.y<=TOWN.y1+1)continue;let md=99;for(const m of mons)if(!m.hire&&!m.gone){const d=Math.hypot(m.hx-q.x,m.hy-q.y);if(d<md)md=d}const sc=Math.min(md,minD)-(o?Math.max(0,Math.hypot(o.x-q.x,o.y-q.y)-15)*.6:0)-(MER.some(o=>o.stall&&Math.hypot(o.stall.x-q.x,o.stall.y-q.y)<14)?6:0);if(sc>bs){bs=sc;best={x:q.x,y:q.y,plot:p.id}}}return best}
 function postQuest(n){const L=LAIRS.filter(L=>Math.hypot(L.x-n.x,L.y-n.y)<20&&mons.some(m=>m.pack==L.id&&!m.dead)&&!QUESTS.some(q=>q.lair==L.id&&!q.done));if(!L.length||R()<.35)return;const l=L.sort((x,y)=>Math.hypot(x.x-n.x,x.y-n.y)-Math.hypot(y.x-n.x,y.y-n.y))[0];
- const q={id:QUESTS.length,lair:l.id,by:n.id,reward:l.lv==1?45:70,until:time+n.stallT+20,done:false};QUESTS.push(q);STAT.quest++;log('c-world','📜 委托：'+n.name+' 悬赏清剿'+plots[l.plot].name+'的'+l.name+'，报酬 '+q.reward+' 金');for(const a of agents)if(!a.dead)wake(a,'公告板新委托')}
+ const q={id:QUESTS.length,lair:l.id,by:n.id,reward:l.lv==1?45:70,until:time+n.stallT+20,done:false};QUESTS.push(q);STAT.quest++;log('c-world','📜 委托：'+n.name+' 悬赏清剿'+plots[l.plot].name+'的'+l.name+'，报酬 '+q.reward+' 金',RALL());for(const a of agents)if(!a.dead)wake(a,'公告板新委托')}
 function checkQuest(pid,a){const q=QUESTS.find(q=>q.lair==pid&&!q.done&&time<q.until);if(!q)return;if(mons.some(m=>m.pack==pid&&!m.dead))return;q.done=true;q.winner=a.id;a.gold+=q.reward;a.xp+=20;a.quests=(a.quests||0)+1;STAT.questDone++;const L=LAIRS[pid];
- log('c-trade','✅ '+a.name+' 清剿了'+L.name+'，完成'+MER[q.by].name+'的委托，+'+q.reward+' 金');banner2('✅ '+a.name+' 完成委托：清剿'+L.name);fx.push({x:a.x,y:a.y,t:1,txt:'委托 +'+q.reward,c:'#ffd166'})}
+ log('c-trade','✅ '+a.name+' 清剿了'+L.name+'，完成'+MER[q.by].name+'的委托，+'+q.reward+' 金',RC(a));banner2('✅ '+a.name+' 完成委托：清剿'+L.name);fx.push({x:a.x,y:a.y,t:1,txt:'委托 +'+q.reward,c:'#ffd166'})}
 const SPECS=['weapon','armor','potion','helmet','weapon','armor','potion','helmet'];
 function updateMerchants(dt){for(const n of MER){if(n.hit>0)n.hit-=dt;if(n.stab>0)n.stab-=dt;
  if(n.dead){n.dead-=dt;if(n.dead<=0){n.dead=0;n.hp=n.maxhp;const sp=safeSpot(10);n.x=sp.x;n.y=sp.y;n.tgt=null;n.path=[];n.stall=null;n.plot=sp.plot;log('c-trade','🛒 '+n.name+' 在'+plots[sp.plot].name+'重新露面')}continue}
@@ -677,7 +681,7 @@ function updateMerchants(dt){for(const n of MER){if(n.hit>0)n.hit-=dt;if(n.stab>
  if(!n.stall){const sp=safeSpot(10,n);n.stall=sp;n.plot=sp.plot;n.stallT=rnd(60,90);n.stalled=false}
  if(n.run>0&&n.tgt){if(moveTo(n,n.tgt.x,n.tgt.y,dt,2.6))n.tgt=null;continue}
  if(moveTo(n,n.stall.x,n.stall.y,dt,1.2)||dist(n,n.stall)<.6){if(!n.stalled){n.stalled=true;n.x=n.stall.x;n.y=n.stall.y;log('c-trade','🛒 '+n.name+' 在'+plots[n.stall.plot].name+'出摊 '+Math.round(n.stallT)+' 秒，'+ITEMS[n.spec].n+'八折');postQuest(n)}}}
- const tr=TRAINER;if(tr.stay>0)tr.stay-=dt;else{if(!tr.dest){const sp=safeSpot(4,tr);tr.dest=sp;tr.plot=sp.plot;log('c-world','📘 技能导师动身云游，前往'+plots[sp.plot].name)}if(moveTo(tr,tr.dest.x,tr.dest.y,dt,1)||dist(tr,tr.dest)<.6){tr.stay=rnd(35,55);tr.dest=null;for(const a of agents)if(!a.dead&&a.plan.some(c=>c.t=='learn'))a.path=[]}}}
+ const tr=TRAINER;if(tr.stay>0)tr.stay-=dt;else{if(!tr.dest){const sp=safeSpot(4,tr);tr.dest=sp;tr.plot=sp.plot;log('c-world','📘 技能导师动身云游，前往'+plots[sp.plot].name,RALL())}if(moveTo(tr,tr.dest.x,tr.dest.y,dt,1)||dist(tr,tr.dest)<.6){tr.stay=rnd(35,55);tr.dest=null;for(const a of agents)if(!a.dead&&a.plan.some(c=>c.t=='learn'))a.path=[]}}}
 // ---------- combat ----------
 function nearestMerchant(a,item){let c=MER.filter(n=>!n.dead&&!n.exposed);if(!c.length)c=MER.filter(n=>!n.dead);const sc=n=>dist(a,n)-(n.spec==item?15:0)-(n.stalled?5:0);return c.sort((p,q)=>sc(p)-sc(q))[0]}
 function moveTo(e,tx,ty,dt,sp){const key=tx+','+ty;if(!e.path.length||e.goal!=key){e.path=path(e.x,e.y,tx,ty);e.goal=key}
@@ -701,15 +705,15 @@ function damage(src,tgt,d,isAg,opt){opt=opt||{};if(tgt.dead)return;if(tgt.st&&sr
 function monLoot(m,a){const ch=[0,.03,.05,.09,.13,.6][m.lv];if(R()>=ch)return;const cap=m.lv>=5?3:m.lv>=3?2:1;let r=null;
  const opts=[];if(a.wt<cap)opts.push('w');if(!a.items.armor)opts.push('armor');if(!a.items.helmet)opts.push('helmet');
  if(opts.length){const k=pick(opts);if(k=='w'){a.wt++;r=wname(a)+'（'+TIERN[a.wt]+'）'}else{a.items[k]=1;r=ITEMS[k].n}a.maxhp=maxHp(a);composeSprite(a);buildCardPortrait(a)}else{a.items.potion=(a.items.potion||0)+1;r='红药水'}
- STAT.loot++;sparks(m.x,m.y,'#ffd166',12);fx.push({x:a.x,y:a.y,t:1.1,txt:'掉宝!',c:'#ffd166'});log('c-trade','🎁 '+a.name+' 从'+['','史莱姆','哥布林','骷髅','骷髅队长','石像魔'][m.lv]+'身上摸到「'+r+'」')}
-function killMon(m,a){m.dead=20+m.lv*4;sparks(m.x,m.y,'#ffffff',8);if(m.hire){m.gone=1;STAT.hireDead++;const o=agents[m.owner],left=hires(plots[m.guard]).length;log('c-fight','🛡 '+(a&&a.st?a.name:'有人')+' 击退了 '+o.name+' 在'+plots[m.guard].name+'的守卫（还剩 '+left+' 名）');wake(o,'守卫被击退');if(!a||!a.st)return;a.gold+=8;a.xp+=15;return}if(!a||!a.st)return;let g=Math.round(MONGOLD*m.lv+R()*MONGOLD);if(evOn('blood')||evOn('gold'))g*=2;a.gold+=g;a.xp+=10*m.lv;a.huntN=(a.huntN||0)+1;monLoot(m,a);if(m.pack!=null)checkQuest(m.pack,a);
- if(m.lv>=5){a.kills+=1;shake(m,.5);log('c-fight','👑 '+a.name+' 击杀精英·石像魔，+'+g+'金');banner2('👑 '+a.name+' 击杀精英·石像魔');director(m.x,m.y,'击杀精英',3);if(a.wt<2){a.wt=2;composeSprite(a);log('c-trade','✨ '+a.name+' 拾取稀有武器「'+wname(a)+'」')}}
- if(m.guard>=0)log('c-fight','⚔ '+a.name+' 击败了'+plots[m.guard].name+'的原生守卫');
- while(a.xp>=30*a.lvl){a.xp-=30*a.lvl;a.lvl++;a.pts+=2;a.maxhp=maxHp(a);a.hp=Math.min(a.maxhp,a.hp+30);log('c-cap','⬆ '+a.name+' 升到 Lv'+a.lvl+'，获得 2 点属性点（待模型分配）');wake(a,'升级加点');sparks(a.x,a.y,'#8fe388',10)}}
-function killAgent(v,a){v.dead=10;v.deaths++;v.lastDeath=time;v.hp=0;const loss=Math.round(v.gold*.3);v.gold-=loss;const bl=v.blessed;if(bl){v.blessed=false;STAT.blessUsed++;log('c-talk','🙏 神殿祝福生效：'+v.name+' 阵亡未损失经验和装备')}const xl=bl?0:Math.round(v.xp*.5);v.xp-=xl;
- let gl='';if(!bl&&R()<.12){const own=[];if(v.wt>0)own.push('w');if(v.items.armor)own.push('armor');if(v.items.helmet)own.push('helmet');if(own.length){const k=pick(own);STAT.gear++;v.lost={k,wt:v.wt};if(k=='w'){const old=wname(v);v.wt--;gl='「'+old+'」降级为「'+wname(v)+'」'}else{v.items[k]=0;gl=k=='armor'?'皮甲':'铁盔'}v.maxhp=maxHp(v);composeSprite(v);buildCardPortrait(v);log('c-fight','💔 '+v.name+' 阵亡时装备受损：'+gl)}}shake(v,.6);sparks(v.x,v.y,v.col,16);
- if(a&&a.st){a.gold+=loss;a.kills++;let msg='💀 '+a.name+' 击杀 '+v.name+'，抢走 '+loss+' 金（'+v.name+' 损失 '+xl+' 经验）';if(bounty==v.id){a.gold+=bountyAmt;a.bountyKills++;msg+='，领取悬赏 '+bountyAmt+' 金';banner2('🎯 '+a.name+' 终结悬赏目标 '+v.name+'！');bounty=-1}log('c-fight',msg);director(v.x,v.y,'击杀',4)}
- else log('c-fight','💀 '+v.name+(a&&a.zone?' 倒在毒圈里':' 被击倒')+'，掉落 '+loss+' 金、损失 '+xl+' 经验');v.plan=[];v.path=[];v.swing=0;wake(v,'阵亡')}
+ STAT.loot++;sparks(m.x,m.y,'#ffd166',12);fx.push({x:a.x,y:a.y,t:1.1,txt:'掉宝!',c:'#ffd166'});log('c-trade','🎁 '+a.name+' 从'+['','史莱姆','哥布林','骷髅','骷髅队长','石像魔'][m.lv]+'身上摸到「'+r+'」',RC(a))}
+function killMon(m,a){m.dead=20+m.lv*4;sparks(m.x,m.y,'#ffffff',8);if(m.hire){m.gone=1;STAT.hireDead++;const o=agents[m.owner],left=hires(plots[m.guard]).length;log('c-fight','🛡 '+(a&&a.st?a.name:'有人')+' 击退了 '+o.name+' 在'+plots[m.guard].name+'的守卫（还剩 '+left+' 名）',RC(a));notifyAgent(o,'守卫被击退','你在'+plots[m.guard].name+'（领地 '+m.guard+'）的一名守卫被'+(a&&a.st&&sees(o,a)?a.name:'人')+'击退，还剩 '+left+' 名',{plotId:m.guard});if(!a||!a.st)return;a.gold+=8;a.xp+=15;return}if(!a||!a.st)return;let g=Math.round(MONGOLD*m.lv+R()*MONGOLD);if(evOn('blood')||evOn('gold'))g*=2;a.gold+=g;a.xp+=10*m.lv;a.huntN=(a.huntN||0)+1;monLoot(m,a);if(m.pack!=null)checkQuest(m.pack,a);
+ if(m.lv>=5){a.kills+=1;shake(m,.5);log('c-fight','👑 '+a.name+' 击杀精英·石像魔，+'+g+'金',RC(a));banner2('👑 '+a.name+' 击杀精英·石像魔');director(m.x,m.y,'击杀精英',3);if(a.wt<2){a.wt=2;composeSprite(a);log('c-trade','✨ '+a.name+' 拾取稀有武器「'+wname(a)+'」',RC(a))}}
+ if(m.guard>=0)log('c-fight','⚔ '+a.name+' 击败了'+plots[m.guard].name+'的原生守卫',RC(a));
+ while(a.xp>=30*a.lvl){a.xp-=30*a.lvl;a.lvl++;a.pts+=2;a.maxhp=maxHp(a);a.hp=Math.min(a.maxhp,a.hp+30);log('c-cap','⬆ '+a.name+' 升到 Lv'+a.lvl+'，获得 2 点属性点（待模型分配）',RC(a));wake(a,'升级加点');sparks(a.x,a.y,'#8fe388',10)}}
+function killAgent(v,a){v.dead=10;v.deaths++;v.lastDeath=time;v.hp=0;const loss=Math.round(v.gold*.3);v.gold-=loss;const bl=v.blessed;if(bl){v.blessed=false;STAT.blessUsed++;log('c-talk','🙏 神殿祝福生效：'+v.name+' 阵亡未损失经验和装备',RC(v))}const xl=bl?0:Math.round(v.xp*.5);v.xp-=xl;
+ let gl='';if(!bl&&R()<.12){const own=[];if(v.wt>0)own.push('w');if(v.items.armor)own.push('armor');if(v.items.helmet)own.push('helmet');if(own.length){const k=pick(own);STAT.gear++;v.lost={k,wt:v.wt};if(k=='w'){const old=wname(v);v.wt--;gl='「'+old+'」降级为「'+wname(v)+'」'}else{v.items[k]=0;gl=k=='armor'?'皮甲':'铁盔'}v.maxhp=maxHp(v);composeSprite(v);buildCardPortrait(v);log('c-fight','💔 '+v.name+' 阵亡时装备受损：'+gl,RC(v))}}shake(v,.6);sparks(v.x,v.y,v.col,16);
+ if(a&&a.st){a.gold+=loss;a.kills++;let msg='💀 '+a.name+' 击杀 '+v.name+'，抢走 '+loss+' 金（'+v.name+' 损失 '+xl+' 经验）';if(bounty==v.id){a.gold+=bountyAmt;a.bountyKills++;msg+='，领取悬赏 '+bountyAmt+' 金';banner2('🎯 '+a.name+' 终结悬赏目标 '+v.name+'！');bounty=-1}log('c-fight',msg,RC(a,v));director(v.x,v.y,'击杀',4)}
+ else log('c-fight','💀 '+v.name+(a&&a.zone?' 倒在毒圈里':' 被击倒')+'，掉落 '+loss+' 金、损失 '+xl+' 经验',RC(v));v.plan=[];v.path=[];v.swing=0;notifyAgent(v,'阵亡',(a&&a.st?'你被 #'+a.id+' '+a.name+' 击杀':a&&a.zone?'你倒在毒圈里':a&&a.lv?'你被野怪击倒':'你被击倒')+'，掉落 '+loss+' 金、损失 '+xl+' 经验'+(bl?'（神殿祝福生效，经验和装备未损失）':'')+(gl?'，装备受损：'+gl:'')+'。10 秒后在城区复活')}
 function hostileAgent(a,b){if(a==b||b.dead||a.allies.has(b.id)||!sees(a,b)||inTownE(a)||inTownE(b))return false;const c=a.plan[a.pi];if(c&&(c.t=='attack'||c.t=='betray')&&c.id==b.id)return true;
  if(habOf(a).fightBack&&a.lastHitBy==b.id&&a.hitT>0)return true;
  if(c&&c.t=='ambush'&&inBush(a)&&dist(a,b)<3)return true;return false}
@@ -728,26 +732,26 @@ function fight(a,dt){a.cd-=dt;a.skcd-=dt;let tgt=null,bd=99;
  if(tgt&&bd<=range(a)+.2&&a.cd<=0&&a.swing<=0)startAttack(a,tgt);return tgt}
 function updatePend(a,dt){if(a.swing>0){const prev=a.swing;a.swing-=dt;const p=a.pend;if(p&&prev>a.swingDur-p.at&&a.swing<=a.swingDur-p.at){a.pend=null;if(!p.tgt.dead&&dist(a,p.tgt)<range(a)+.8){damage(a,p.tgt,p.d,true,{crit:p.crit,kb:p.kb,stop:p.stop});fx.push({x:a.x,y:a.y,t:.18,slash:a.face,col:a.wt>=2?TIERC[a.wt]:'#ffffff'})}}}}
 // ---------- world ----------
-function startEvent(e){event={k:e.k,n:e.n,t:60};log('c-world','🌍 世界事件：'+e.n+'（'+e.d+'，持续 60 秒）');banner2('🌍 '+e.n+' 降临');agents.forEach(a=>wake(a,'世界事件'));
+function startEvent(e){event={k:e.k,n:e.n,t:60};log('c-world','🌍 世界事件：'+e.n+'（'+e.d+'，持续 60 秒）',RALL());banner2('🌍 '+e.n+' 降临');agents.forEach(a=>wake(a,'世界事件'));
  if(e.k=='elite')for(let i=0;i<3;i++){const an=R()*6.28,x=Math.round(CX+Math.cos(an)*7),y=Math.round(CX+Math.sin(an)*7);if(walk(x,y))mons.push({lv:4,x,y,hx:x,hy:y,hp:110,maxhp:110,cd:0,guard:-1,dead:0,hit:0,stop:0,kbx:0,kby:0,t:R()*9,elite:1,face:1})}}
 function startVote(){const opts=[];const pool=EVENTS.slice();while(opts.length<3)opts.push(pool.splice(Math.floor(R()*pool.length),1)[0]);vote={opts,t:12,votes:[0,0,0],mine:-1};renderVote()}
 function renderVote(){const el=document.getElementById('vote');if(!vote){el.style.display='none';return}el.style.display='block';
  el.innerHTML='<b>📣 观众投票：下一个世界事件</b> <span class="mini">还剩 '+Math.ceil(vote.t)+' 秒'+(vote.mine>=0?' · 你已投票':'')+'</span><div class="opts">'+vote.opts.map((o,i)=>'<button data-i="'+i+'" class="'+(vote.mine==i?'on':'')+'">'+escapeHTML(o.n)+'<br><span class="mini">'+escapeHTML(o.d)+'</span></button>').join('')+'</div>';
  el.querySelectorAll('button').forEach(b=>b.onclick=()=>{if(vote.mine<0){vote.mine=+b.dataset.i;vote.votes[vote.mine]+=3;renderVote()}})}
 function spawnChest(){for(let k=0;k<80;k++){const an=R()*6.28,rr=R()*Math.max(4,zone.r-4),x=Math.round(zone.cx+Math.cos(an)*rr),y=Math.round(zone.cy+Math.sin(an)*rr);
-  if(walk(x,y)&&map[y][x]!=4&&map[y][x]!=6){const c={id:chests.length,x,y,opened:false,openBy:-1,prog:0,fall:1.2};chests.push(c);log('c-world','📦 空投落在 ('+x+','+y+')！先开箱的人拿史诗武器');banner2('📦 空投来了！');agents.forEach(a=>wake(a,'空投出现'));director(x,y,'空投',3);return}}}
+  if(walk(x,y)&&map[y][x]!=4&&map[y][x]!=6){const c={id:chests.length,x,y,opened:false,openBy:-1,prog:0,fall:1.2};chests.push(c);log('c-world','📦 空投落在 ('+x+','+y+')！先开箱的人拿史诗武器',RALL());banner2('📦 空投来了！');agents.forEach(a=>wake(a,'空投出现'));director(x,y,'空投',3);return}}}
 function step(dt){time+=dt;directorTick(dt);if(bannerT>0)bannerT-=dt;
  if(WAITALL&&agents.some(a=>a.thinking)){time-=dt;agents.forEach(a=>{if(a.thinking){a.thinkLeft-=dt;if(a.thinkLeft<=0)finishThink(a)}});const s=agents.find(a=>a.thinking);if(s){banner='世界暂停：等待 '+s.name+' 思考…';bannerT=.2}return}
  // zone
- if(time>=zone.t0){if(!zone.warned){zone.warned=true;log('c-world','☠ 毒圈开始收缩！圈外每秒掉血');banner2('☠ 毒圈开始收缩');agents.forEach(a=>wake(a,'毒圈收缩'))}zone.r=zone.r0-(zone.r0-zone.r1)*Math.min(1,(time-zone.t0)/(zone.t1-zone.t0))}
+ if(time>=zone.t0){if(!zone.warned){zone.warned=true;log('c-world','☠ 毒圈开始收缩！圈外每秒掉血',RALL());banner2('☠ 毒圈开始收缩');agents.forEach(a=>wake(a,'毒圈收缩'))}zone.r=zone.r0-(zone.r0-zone.r1)*Math.min(1,(time-zone.t0)/(zone.t1-zone.t0))}
  if(time>=nextDrop){spawnChest();nextDrop+=100}
  if(time>=nextVote&&!vote&&!event){nextVote=time+110;if(VOTE)startVote();else startEvent(pick(EVENTS))}
  if(vote){vote.t-=dt;if(R()<dt*1.5){vote.votes[Math.floor(R()*3)]+=1}if(vote.t<=0){const i=vote.votes.indexOf(Math.max(...vote.votes));const e=vote.opts[i];log('c-world','🗳 观众投票结果：'+e.n+'（'+vote.votes.join(' / ')+' 票）');vote=null;renderVote();startEvent(e)}}
- if(event){event.t-=dt;if(evOn('meteor')&&R()<dt*.6){const a=pick(agents.filter(x=>!x.dead));const mx2=a.x+rnd(-5,5),my2=a.y+rnd(-5,5);meteors.push({x:mx2,y:my2,t:1.3})}if(event.t<=0){log('c-world','🌍 '+event.n+' 结束');event=null}}
+ if(event){event.t-=dt;if(evOn('meteor')&&R()<dt*.6){const a=pick(agents.filter(x=>!x.dead));const mx2=a.x+rnd(-5,5),my2=a.y+rnd(-5,5);meteors.push({x:mx2,y:my2,t:1.3})}if(event.t<=0){log('c-world','🌍 '+event.n+' 结束',RALL());event=null}}
  for(const m of meteors){m.t-=dt;if(m.t<=0&&!m.done){m.done=true;sparks(m.x,m.y,'#ff7043',16);fx.push({x:m.x,y:m.y,t:.5,boom:1});shake(m,.5);for(const a of agents)if(!a.dead&&Math.hypot(a.x-m.x,a.y-m.y)<1.6)damage(null,a,22,false,{});for(const o of mons)if(!o.dead&&Math.hypot(o.x-m.x,o.y-m.y)<1.6)damage(null,o,22,false,{})}}
  meteors=meteors.filter(m=>m.t>-.1);
  // bounty
- if(time>=nextB){nextB+=30;const s=agents.map(a=>({a,s:score(a)})).sort((p,q)=>q.s-p.s);if(s[0].s>s[1].s*1.3&&s[0].s>200){if(bounty!=s[0].a.id){bounty=s[0].a.id;bountyAmt=Math.round(60+s[0].s/10);log('c-world','🎯 '+s[0].a.name+' 领先太多，被挂上 '+bountyAmt+' 金悬赏');banner2('🎯 悬赏 '+s[0].a.name+'：'+bountyAmt+' 金');agents.forEach(a=>{if(a!=s[0].a)wake(a,'悬赏发布')})}}else bounty=-1}
+ if(time>=nextB){nextB+=30;const s=agents.map(a=>({a,s:score(a)})).sort((p,q)=>q.s-p.s);if(s[0].s>s[1].s*1.3&&s[0].s>200){if(bounty!=s[0].a.id){bounty=s[0].a.id;bountyAmt=Math.round(60+s[0].s/10);log('c-world','🎯 '+s[0].a.name+' 领先太多，被挂上 '+bountyAmt+' 金悬赏',RALL());banner2('🎯 悬赏 '+s[0].a.name+'：'+bountyAmt+' 金');agents.forEach(a=>{if(a!=s[0].a)notifyAgent(a,'悬赏发布','#'+s[0].a.id+' '+s[0].a.name+' 领先太多，被挂上 '+bountyAmt+' 金悬赏，谁击杀谁拿');else if(a.ext)notifyAgent(a,'你被悬赏','你领先太多，被挂上 '+bountyAmt+' 金悬赏，所有人都会盯上你')})}}else bounty=-1}
  updateMerchants(dt);
  for(const m of mons){if(m.dead){m.dead-=dt;if(m.dead<=0){if(m.elite||m.raid!=null){m.gone=1;continue}m.dead=0;m.hp=m.maxhp;m.x=m.hx;m.y=m.hy}continue}if(m.hit>0)m.hit-=dt;
   if(m.kbx||m.kby){const nx=m.x+m.kbx*dt*8,ny=m.y+m.kby*dt*8;if(walk(Math.round(nx),Math.round(ny))){m.x=nx;m.y=ny}m.kbx*=.7;m.kby*=.7;if(Math.abs(m.kbx)+Math.abs(m.kby)<.02)m.kbx=m.kby=0}
@@ -777,8 +781,8 @@ function step(dt){time+=dt;directorTick(dt);if(bannerT>0)bannerT-=dt;
  updatePerception();updateTown(dt);
  for(const a of agents){if(a.hit>0)a.hit-=dt;if(a.hitT>0)a.hitT-=dt;if(a.mhT>0)a.mhT-=dt;
  a.upT=(a.upT||0)+dt;if(a.upT>=5){a.upT=0;const n=plots.filter(p=>p.owner==a.id).length,due=upkeepOf(n);if(due>0){const paid=Math.min(a.gold,due);a.gold-=paid;a.upkeepPaid=(a.upkeepPaid||0)+paid;
-  if(paid<due){const g=mons.find(m=>m.hire&&m.owner==a.id&&!m.dead&&!m.gone);if(g){g.dead=1;g.gone=1;log('c-cap','💸 '+a.name+' 付不起领地维护费，'+plots[g.guard].name+'的一名守卫走了');wake(a,'欠维护费，守卫离开')}}}}if(a.moving>0)a.moving-=dt;
-  if(a.dead){a.dead-=dt;if(a.dead<=0){a.dead=0;a.hp=a.maxhp;a.x=H-1+ri(0,2);a.y=H-2;a.path=[];log('c-think','✨ '+a.name+' 在城区复活');wake(a,'城区复活')}continue}
+  if(paid<due){const g=mons.find(m=>m.hire&&m.owner==a.id&&!m.dead&&!m.gone);if(g){g.dead=1;g.gone=1;log('c-cap','💸 '+a.name+' 付不起领地维护费，'+plots[g.guard].name+'的一名守卫走了',RC(a));notifyAgent(a,'欠维护费，守卫离开','你付不起领地维护费，'+plots[g.guard].name+'（领地 '+g.guard+'）的一名守卫走了',{plotId:g.guard})}}}}if(a.moving>0)a.moving-=dt;
+  if(a.dead){a.dead-=dt;if(a.dead<=0){a.dead=0;a.hp=a.maxhp;a.x=H-1+ri(0,2);a.y=H-2;a.path=[];log('c-think','✨ '+a.name+' 在城区复活',RC(a));wake(a,'城区复活')}continue}
   if(a.thinking){a.thinkLeft-=dt;if(a.thinkLeft<=0)finishThink(a)}else tryThink(a);
   if(a.kbx||a.kby){const nx=a.x+a.kbx*dt*8,ny=a.y+a.kby*dt*8;if(walk(Math.round(nx),Math.round(ny))){a.x=nx;a.y=ny}a.kbx*=.7;a.kby*=.7;if(Math.abs(a.kbx)+Math.abs(a.kby)<.02)a.kbx=a.kby=0;a.path=[]}
   if(a.stop>0){a.stop-=dt;continue}
@@ -788,26 +792,26 @@ function step(dt){time+=dt;directorTick(dt);if(bannerT>0)bannerT-=dt;
   if(habOf(a).potion>0&&a.hp<a.maxhp*a.hab.potion&&a.items.potion>0&&(a.potCd||0)<=0){a.items.potion--;a.hp=Math.min(a.maxhp,a.hp+45);a.potCd=4;fx.push({x:a.x,y:a.y,t:.8,txt:'+45',c:'#7f7'});sparks(a.x,a.y,'#7f7',6);if(a.hp<a.maxhp*.5)wake(a,'血量危险')}
   a.potCd=(a.potCd||0)-dt;if(a.skills.heal){a.hcd=(a.hcd||0)-dt;if(habOf(a).potion>0&&a.hp<a.maxhp*Math.max(a.hab.potion,.01)+a.maxhp*.15&&a.hcd<=0){a.hp=Math.min(a.maxhp,a.hp+a.st[3]*4);a.hcd=8;fx.push({x:a.x,y:a.y,t:.8,txt:'治疗',c:'#7f7'})}}
   const inTown=a.x>=TOWN.x0&&a.x<=TOWN.x1&&a.y>=TOWN.y0&&a.y<=TOWN.y1;
-  if(habOf(a).flee>0&&a.hp<a.maxhp*a.hab.flee&&!outZone({x:H,y:H-2})){if(!a.fleeLog){a.fleeLog=1;log('c-fight','🏃 '+a.name+' 按自己定的习惯：血量低于 '+Math.round(a.hab.flee*100)+'% 撤回主城');wake(a,'残血撤退')}moveTo(a,H,H-2,dt,spd(a));if(inTown)a.hp=Math.min(a.maxhp,a.hp+dt*8);continue}a.fleeLog=0;
+  if(habOf(a).flee>0&&a.hp<a.maxhp*a.hab.flee&&!outZone({x:H,y:H-2})){if(!a.fleeLog){a.fleeLog=1;log('c-fight','🏃 '+a.name+' 按自己定的习惯：血量低于 '+Math.round(a.hab.flee*100)+'% 撤回主城',RC(a));wake(a,'残血撤退')}moveTo(a,H,H-2,dt,spd(a));if(inTown)a.hp=Math.min(a.maxhp,a.hp+dt*8);continue}a.fleeLog=0;
   if(inTown)a.hp=Math.min(a.maxhp,a.hp+dt*3);
   const eng=fight(a,dt);if(a.swing>0&&a.m.wep!='bow'&&a.m.wep!='staff')continue;exec(a,dt,eng)}
  for(const c of chests){if(c.fall>0){c.fall-=dt;continue}if(c.opened)continue;const op=c.openBy>=0?agents[c.openBy]:null;
-  if(!op||op.dead||dist(op,c)>1.4){c.openBy=-1;c.prog=0;const cand=agents.find(a=>!a.dead&&dist(a,c)<1.3&&a.plan[a.pi]&&a.plan[a.pi].t=='loot');if(cand){c.openBy=cand.id;log('c-world','📦 '+cand.name+' 开始开空投（3 秒）');director(c.x,c.y,'开空投',3)}}
-  else{c.prog+=dt;if(c.prog>=3){c.opened=true;op.wt=3;op.gold+=80;op.items.potion=(op.items.potion||0)+2;op.chests++;composeSprite(op);buildCardPortrait(op);sparks(c.x,c.y,'#ffd166',24);shake(c,.4);log('c-world','✨ '+op.name+' 打开空投，拿到史诗武器「'+wname(op)+'」+80 金');banner2('✨ '+op.name+' 拿到史诗「'+wname(op)+'」');director(c.x,c.y,'史诗武器',4);if(op.plan[op.pi]&&op.plan[op.pi].t=='loot'){op.pi++;op.cmdT=0}agents.forEach(a=>{if(a!=op&&a.plan.some(q=>q.t=='loot'&&q.id==c.id))wake(a,'空投被抢')})}}}
+  if(!op||op.dead||dist(op,c)>1.4){c.openBy=-1;c.prog=0;const cand=agents.find(a=>!a.dead&&dist(a,c)<1.3&&a.plan[a.pi]&&a.plan[a.pi].t=='loot');if(cand){c.openBy=cand.id;log('c-world','📦 '+cand.name+' 开始开空投（3 秒）',RSEE(cand));director(c.x,c.y,'开空投',3)}}
+  else{c.prog+=dt;if(c.prog>=3){c.opened=true;op.wt=3;op.gold+=80;op.items.potion=(op.items.potion||0)+2;op.chests++;composeSprite(op);buildCardPortrait(op);sparks(c.x,c.y,'#ffd166',24);shake(c,.4);log('c-world','✨ '+op.name+' 打开空投，拿到史诗武器「'+wname(op)+'」+80 金',RSEE(op));banner2('✨ '+op.name+' 拿到史诗「'+wname(op)+'」');director(c.x,c.y,'史诗武器',4);if(op.plan[op.pi]&&op.plan[op.pi].t=='loot'){op.pi++;op.cmdT=0}agents.forEach(a=>{if(a!=op&&a.plan.some(q=>q.t=='loot'&&q.id==c.id))notifyAgent(a,'空投被抢','你要抢的空投 #'+c.id+' 已被'+(sees(a,op)?op.name:'别人')+'打开')})}}}
  for(const p of plots){const inside=agents.filter(a=>!a.dead&&plotAt(a.x,a.y)==p);
   if(p.owner>=0){p.tick=(p.tick||0)+dt;if(p.tick>=5){p.tick=0;agents[p.owner].gold+=evOn('gold')?8:4}}
   if(p.owner>=0){const o=agents[p.owner];const here=!o.dead&&plotAt(o.x,o.y)==p;const rm=raidMons(p);
-   if(rm.length){if(!here&&!plotGuards(p).length){p.raidT=(p.raidT||0)+dt;if(p.raidT>=RAID_TAKE){log('c-cap','🐺 来袭的野怪占领了'+o.name+'的'+p.name+'，领地变回无主，野怪随即离开');mons.forEach(m=>{if(m.raid==p.id)m.gone=1});p.owner=-1;p.idle=0;p.raidT=0;p.prog=0;p.capBy=-1;wake(o,'领地失守')}}}
-   else if(p.raidT>0){log('c-cap','🛡 '+o.name+' 的'+p.name+'打退了来袭野怪');p.raidT=0;p.idle=0}
+   if(rm.length){if(!here&&!plotGuards(p).length){p.raidT=(p.raidT||0)+dt;if(p.raidT>=RAID_TAKE){log('c-cap','🐺 来袭的野怪占领了'+o.name+'的'+p.name+'，领地变回无主，野怪随即离开',RC(o));mons.forEach(m=>{if(m.raid==p.id)m.gone=1});p.owner=-1;p.idle=0;p.raidT=0;p.prog=0;p.capBy=-1;notifyAgent(o,'领地失守','来袭的野怪占领了你的'+p.name+'（领地 '+p.id+'），领地变回无主',{plotId:p.id})}}}
+   else if(p.raidT>0){log('c-cap','🛡 '+o.name+' 的'+p.name+'打退了来袭野怪',RC(o));p.raidT=0;p.idle=0}
    else if(here||hires(p).length){p.idle=0}
    else{p.idle=(p.idle||0)+dt;if(p.idle>=RAID_IDLE){p.idle=0;p.raidT=0.001;const lv=Math.min(5,p.lv*2);for(let k=0;k<2;k++){const q=randIn(p);spawnMon(lv,q.x,q.y,-1);mons[mons.length-1].raid=p.id}
-     log('c-cap','🐺 野怪来袭'+o.name+'的'+p.name+'（无人看守），'+RAID_TAKE+' 秒内不回来打退就会失守');director(p.cx,p.cy,'野怪来袭',3);wake(o,'野怪来袭领地')}}}
+     log('c-cap','🐺 野怪来袭'+o.name+'的'+p.name+'（无人看守），'+RAID_TAKE+' 秒内不回来打退就会失守',RC(o));director(p.cx,p.cy,'野怪来袭',3);notifyAgent(o,'野怪来袭领地','野怪来袭你无人看守的'+p.name+'（领地 '+p.id+'），'+RAID_TAKE+' 秒内不回来打退就会失守',{plotId:p.id})}}}
   const caps=inside.filter(a=>a.plan[a.pi]&&a.plan[a.pi].t=='capture'&&a.plan[a.pi].p==p.id&&p.owner!=a.id);
   const guard=mons.some(m=>m.guard==p.id&&!m.dead&&!m.msg);
   if(caps.length&&!guard){const c=caps[0];const blocked=inside.some(b=>b!=c&&!c.allies.has(b.id)&&(b.id==p.owner||caps.includes(b)));
-   if(p.capBy!=c.id){p.capBy=c.id;p.prog=0;if(p.owner>=0){log('c-cap','⚠ '+c.name+' 正在占领 '+agents[p.owner].name+' 的'+p.name);plotAttacked(p,c)}}
+   if(p.capBy!=c.id){p.capBy=c.id;p.prog=0;if(p.owner>=0){log('c-cap','⚠ '+c.name+' 正在占领 '+agents[p.owner].name+' 的'+p.name,RC(c));plotAttacked(p,c)}}
    if(!blocked)p.prog+=dt;
-   if(p.prog>=8){const old=p.owner;p.owner=c.id;STAT.cap++;if(old>=0)wake(agents[old],'领地失守');p.prog=0;p.capBy=-1;c.pi++;c.cmdT=0;log('c-cap','🏳 '+c.name+' 占领了'+p.name+(old>=0?'（从 '+agents[old].name+' 手中）':''));if(old>=0){banner2('🏳 '+c.name+' 夺走了 '+agents[old].name+' 的'+p.name);director(c.x,c.y,'夺地',2)}}}
+   if(p.prog>=8){const old=p.owner;p.owner=c.id;STAT.cap++;if(old>=0)notifyAgent(agents[old],'领地失守','#'+c.id+' '+c.name+' 占领了你的'+p.name+'（领地 '+p.id+'）',{plotId:p.id});p.prog=0;p.capBy=-1;c.pi++;c.cmdT=0;log('c-cap','🏳 '+c.name+' 占领了'+p.name+(old>=0?'（从 '+agents[old].name+' 手中）':''),RC(c,agents[old]));if(old>=0){banner2('🏳 '+c.name+' 夺走了 '+agents[old].name+' 的'+p.name);director(c.x,c.y,'夺地',2)}}}
   else if(!caps.length){p.capBy=-1;p.prog=Math.max(0,p.prog-dt*2)}}
  for(const f of fx)f.t-=dt;fx=fx.filter(f=>f.t>0);
  for(const p of parts){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=12*dt;p.t-=dt}parts=parts.filter(p=>p.t>0);if(parts.length>400)parts.splice(0,parts.length-400);
@@ -819,11 +823,11 @@ function exec(a,dt,engaged){let c=a.plan[a.pi];a.cmdT+=dt;const S=spd(a);
  case'zone':{const d=Math.hypot(a.x-zone.cx,a.y-zone.cy);if(d<Math.max(2,zone.r*.55)||a.cmdT>40){next();break}moveTo(a,Math.round(zone.cx),Math.round(zone.cy),dt,S);break}
  case'loot':{const ch=chests[c.id];if(!ch||ch.opened||a.cmdT>50){next();break}if(dist(a,ch)>1.1)moveTo(a,ch.x,ch.y,dt,S);break}
  case'ambush':{if(a.cmdT>30){next();break}if(!inBush(a)){if(!a.bushT||a.cmdT<dt*1.5){let best=null,bd=99;for(let y=Math.round(a.y)-10;y<=Math.round(a.y)+10;y++)for(let x=Math.round(a.x)-10;x<=Math.round(a.x)+10;x++)if(map[y]&&map[y][x]==6&&!outZone({x,y},time>=zone.t0?10:2)){const d=Math.hypot(x-a.x,y-a.y);if(d<bd){bd=d;best={x,y}}}a.bushT=best}if(!a.bushT){next();break}moveTo(a,a.bushT.x,a.bushT.y,dt,S)}break}
- case'buy':{const n=c.mid!=null&&!MER[c.mid].dead?MER[c.mid]:nearestMerchant(a,c.item);c.mid=n?n.id:null;if(!n||a.cmdT>45){next();break}if(dist(a,n)>1.3)moveTo(a,Math.round(n.x),Math.round(n.y),dt,S);else{const pr=Math.round(price(a,c.item)*(n.spec==c.item?.8:1));const has=c.item=='weapon'?a.wt>=1:c.item!='potion'&&a.items[c.item];if(a.gold>=pr&&!has){a.gold-=pr;if(c.item=='weapon')a.wt=1;else a.items[c.item]=(a.items[c.item]||0)+1;if(c.item!='potion'){a.maxhp=maxHp(a);composeSprite(a);buildCardPortrait(a);fx.push({x:a.x,y:a.y,t:1,txt:'换装!',c:'#ffd166'});sparks(a.x,a.y,'#ffd166',8)}log('c-trade','💰 '+a.name+' 向'+n.name+'买了'+(c.item=='weapon'?wname(a):ITEMS[c.item].n)+'（'+pr+'金'+(n.spec==c.item?'，特价':'')+(a.betrayer?'，背信加价':'')+(evOn('sale')?'，大促价':'')+'）')}next()}break}
- case'learn':{const n=TRAINER;if(a.cmdT>60){next();break}if(dist(a,n)>1.3)moveTo(a,Math.round(n.x),Math.round(n.y),dt,S);else{const s=SKILLS[c.sk],pr=price(a,'',s.p);if(a.gold>=pr&&!a.skills[c.sk]){a.gold-=pr;a.skills[c.sk]=1;log('c-trade','📘 '+a.name+' 学会了'+s.n+'（'+pr+'金）')}next()}break}
- case'pact':{const b=agents[c.id];if(b.dead||a.allies.has(b.id)){next();break}if(a.cmdT>30){log('c-pact','🚶 '+a.name+' 没追上 '+b.name+'，结盟没谈成');next();break}if(dist(a,b)>3.2){if(seeOne(a,b)){moveTo(a,Math.round(b.x),Math.round(b.y),dt,S);if(!c.hail&&dist(a,b)<vis(a)){c.hail=1;bub(a,b.name.split(' ')[0]+'，别动手，等等，谈谈！');if(!hostileAgent(b,a)||b.m.per.diplo>.4){b.stop=Math.max(b.stop,3.5);b.face=a.x>b.x?1:-1;bub(b,'嗯？你想谈什么？',.8)}}}else{const ls=a.lastSeen[b.id];if(ls&&ls.t>time-25&&dist(a,ls)>1.5)moveTo(a,Math.round(ls.x),Math.round(ls.y),dt,S);else{say(a,b.name+'走远了，没谈成。');log('c-pact','🚶 '+a.name+' 想找 '+b.name+' 当面结盟，但追丢了');next()}}break}if(!c.sent){c.sent=1;b.known.add(a.id);log('c-pact','📨 '+a.name+' → '+b.name+'：『'+pick(['我们一起守住这一片，收益五五分。','先别打了，联手吃掉最强的那个。','结个盟？视野共享，我输出你抗。','空投一起抢，史诗归你，金币归我。'])+'』（当面）');bub(a,'结个盟？视野共享。');b.stop=Math.max(b.stop,1.5);b.face=a.x>b.x?1:-1;c.wait=1.4}if(c.wait>0){c.wait-=dt;if(c.wait<=0){answerPact(b,a);next()}}break}
- case'betray':{const b=agents[c.id];if(a.allies.has(b.id)){a.allies.delete(b.id);b.allies.delete(a.id);a.betrayer=true;a.betrays++;log('c-betray','🗡 背叛！'+a.name+' 撕毁与 '+b.name+' 的盟约');banner2('🗡 背叛！'+a.name+' 撕毁与 '+b.name+' 的盟约');director(a.x,a.y,'背叛',5);wake(b,'被盟友背叛');say(b,'记住了，'+a.name+'。')}c.t='attack';break}
- case'attack':{const b=agents[c.id];if(b.dead||a.cmdT>25||a.allies.has(b.id)){next();break}if(inTownE(b)&&dist(a,b)<vis(a)){say(a,b.name+'躲进城了，城里不准动手，先放他一马。');log('c-fight','🏰 '+b.name+' 逃进城区，'+a.name+' 只能在城外干瞪眼');bub(a,'进城了？算你走运。');next();break}
+ case'buy':{const n=c.mid!=null&&!MER[c.mid].dead?MER[c.mid]:nearestMerchant(a,c.item);c.mid=n?n.id:null;if(!n||a.cmdT>45){next();break}if(dist(a,n)>1.3)moveTo(a,Math.round(n.x),Math.round(n.y),dt,S);else{const pr=Math.round(price(a,c.item)*(n.spec==c.item?.8:1));const has=c.item=='weapon'?a.wt>=1:c.item!='potion'&&a.items[c.item];if(a.gold>=pr&&!has){a.gold-=pr;if(c.item=='weapon')a.wt=1;else a.items[c.item]=(a.items[c.item]||0)+1;if(c.item!='potion'){a.maxhp=maxHp(a);composeSprite(a);buildCardPortrait(a);fx.push({x:a.x,y:a.y,t:1,txt:'换装!',c:'#ffd166'});sparks(a.x,a.y,'#ffd166',8)}log('c-trade','💰 '+a.name+' 向'+n.name+'买了'+(c.item=='weapon'?wname(a):ITEMS[c.item].n)+'（'+pr+'金'+(n.spec==c.item?'，特价':'')+(a.betrayer?'，背信加价':'')+(evOn('sale')?'，大促价':'')+'）',RC(a))}next()}break}
+ case'learn':{const n=TRAINER;if(a.cmdT>60){next();break}if(dist(a,n)>1.3)moveTo(a,Math.round(n.x),Math.round(n.y),dt,S);else{const s=SKILLS[c.sk],pr=price(a,'',s.p);if(a.gold>=pr&&!a.skills[c.sk]){a.gold-=pr;a.skills[c.sk]=1;log('c-trade','📘 '+a.name+' 学会了'+s.n+'（'+pr+'金）',RC(a))}next()}break}
+ case'pact':{const b=agents[c.id];if(b.dead||a.allies.has(b.id)){next();break}if(a.cmdT>30){log('c-pact','🚶 '+a.name+' 没追上 '+b.name+'，结盟没谈成',RC(a));next();break}if(dist(a,b)>3.2){if(seeOne(a,b)){moveTo(a,Math.round(b.x),Math.round(b.y),dt,S);if(!c.hail&&dist(a,b)<vis(a)){c.hail=1;bub(a,b.name.split(' ')[0]+'，别动手，等等，谈谈！');if(!hostileAgent(b,a)||b.m.per.diplo>.4){b.stop=Math.max(b.stop,3.5);b.face=a.x>b.x?1:-1;bub(b,'嗯？你想谈什么？',.8)}}}else{const ls=a.lastSeen[b.id];if(ls&&ls.t>time-25&&dist(a,ls)>1.5)moveTo(a,Math.round(ls.x),Math.round(ls.y),dt,S);else{say(a,b.name+'走远了，没谈成。');log('c-pact','🚶 '+a.name+' 想找 '+b.name+' 当面结盟，但追丢了',RC(a));next()}}break}if(!c.sent){c.sent=1;b.known.add(a.id);log('c-pact','📨 '+a.name+' → '+b.name+'：『'+pick(['我们一起守住这一片，收益五五分。','先别打了，联手吃掉最强的那个。','结个盟？视野共享，我输出你抗。','空投一起抢，史诗归你，金币归我。'])+'』（当面）',RC(a,b));bub(a,'结个盟？视野共享。');b.stop=Math.max(b.stop,1.5);b.face=a.x>b.x?1:-1;c.wait=1.4}if(c.wait>0){c.wait-=dt;if(c.wait<=0){answerPact(b,a);next()}}break}
+ case'betray':{const b=agents[c.id];if(a.allies.has(b.id)){a.allies.delete(b.id);b.allies.delete(a.id);a.betrayer=true;a.betrays++;log('c-betray','🗡 背叛！'+a.name+' 撕毁与 '+b.name+' 的盟约',RC(a,b));banner2('🗡 背叛！'+a.name+' 撕毁与 '+b.name+' 的盟约');director(a.x,a.y,'背叛',5);notifyAgent(b,'被盟友背叛','#'+a.id+' '+a.name+' 撕毁了和你的盟约，并开始攻击你');say(b,'记住了，'+a.name+'。')}c.t='attack';break}
+ case'attack':{const b=agents[c.id];if(b.dead||a.cmdT>25||a.allies.has(b.id)){next();break}if(inTownE(b)&&dist(a,b)<vis(a)){say(a,b.name+'躲进城了，城里不准动手，先放他一马。');log('c-fight','🏰 '+b.name+' 逃进城区，'+a.name+' 只能在城外干瞪眼',RC(a,b));bub(a,'进城了？算你走运。');next();break}
   if(sees(a,b)){if(engaged!=b||dist(a,b)>range(a))moveTo(a,Math.round(b.x),Math.round(b.y),dt,S)}
   else{const ls=a.lastSeen[b.id];if(!ls||dist(a,ls)<1.2){say(a,b.name+'跑出视野了，追丢了。');next()}else moveTo(a,Math.round(ls.x),Math.round(ls.y),dt,S)}break}
  case'town':{const n=TOWNNPC[c.k];if(a.cmdT>70){next();break}if(c.talk!=null){c.talk-=dt;if(c.talk<=0)next();break}
@@ -834,8 +838,8 @@ function exec(a,dt,engaged){let c=a.plan[a.pi];a.cmdT+=dt;const S=spd(a);
  case'recruit':{const p=plots[c.p];if(p.owner!=a.id||a.cmdT>40){next();break}
   if(dist(a,{x:p.cx,y:p.cy})>2.2&&plotAt(a.x,a.y)!=p){moveTo(a,Math.round(p.cx),Math.round(p.cy),dt,S);break}
   let got=0;for(let k=0;k<c.n;k++){if(hires(p).length>=GCAP||a.gold<GCOST)break;let q=null;for(let t2=0;t2<20;t2++){const r=randIn(p);if(walk(r.x,r.y)){q=r;break}}if(!q)break;a.gold-=GCOST;spawnMon(3,q.x,q.y,p.id);const m=mons[mons.length-1];m.hire=1;m.owner=a.id;got++;STAT.hire++;sparks(q.x,q.y,a.col,8)}
-  if(got){log('c-cap','🛡 '+a.name+' 在'+p.name+'招募了 '+got+' 名守卫（共 '+hires(p).length+'/'+GCAP+'，每名 '+GCOST+' 金）');
-   if(a.msgPol==null&&a.ext)a.msgPol=false;if(a.msgPol==null){const P=a.m.per;a.msgPol=R()<.5+P.diplo*.3+P.econ*.2-P.aggr*.3;log('c-cap','📜 '+a.name+' 给守卫下令：'+(a.msgPol?'领地被攻时派 1 人来报信（至少有 2 名守卫时）':'领地被攻时全员死守，不派人'));say(a,a.msgPol?'被打了派个人来找我。':'守卫都给我守着，一个也别走。')}}next();break}
+  if(got){log('c-cap','🛡 '+a.name+' 在'+p.name+'招募了 '+got+' 名守卫（共 '+hires(p).length+'/'+GCAP+'，每名 '+GCOST+' 金）',RC(a));
+   if(a.msgPol==null&&a.ext)a.msgPol=false;if(a.msgPol==null){const P=a.m.per;a.msgPol=R()<.5+P.diplo*.3+P.econ*.2-P.aggr*.3;log('c-cap','📜 '+a.name+' 给守卫下令：'+(a.msgPol?'领地被攻时派 1 人来报信（至少有 2 名守卫时）':'领地被攻时全员死守，不派人'),RC(a));say(a,a.msgPol?'被打了派个人来找我。':'守卫都给我守着，一个也别走。')}}next();break}
  case'rescue':{const n=MER[c.id];if(n.dead||a.cmdT>35||n.rescuedInc==n.incident){if(n.dead)say(a,'晚了一步，'+n.name+'没救下来。');else if(n.rescuedInc==n.incident&&n.rescuer!=a.id)say(a,'被'+agents[n.rescuer].name+'抢先救了。');next();break}
   const near=mons.filter(m=>!m.dead&&!m.hire&&dist(m,n)<4.5);if(!near.length&&dist(a,n)<2.5){rescueDone(a,n);next();break}
   if(engaged&&!engaged.st){if(dist(a,engaged)>range(a))moveTo(a,Math.round(engaged.x),Math.round(engaged.y),dt,S);break}
@@ -843,19 +847,19 @@ function exec(a,dt,engaged){let c=a.plan[a.pi];a.cmdT+=dt;const S=spd(a);
  case'scout':{const p=plots[c.p];if(moveTo(a,Math.round(p.cx),Math.round(p.cy),dt,S)||a.cmdT>40)next();break}
  case'defend':case'capture':case'hunt':{const p=plots[c.p];const inP=plotAt(a.x,a.y)==p;
   if(c.t=='capture'&&p.owner==a.id){next();break}
-  if(time>=zone.t0&&outZone({x:p.cx,y:p.cy},2)&&c.t!='defend'&&!c.zw){c.zw=1;log('c-think','⚠ '+a.name+' 的目标'+p.name+'在毒圈外（引擎照常执行）');wake(a,'目标领地在圈外')}
+  if(time>=zone.t0&&outZone({x:p.cx,y:p.cy},2)&&c.t!='defend'&&!c.zw){c.zw=1;log('c-think','⚠ '+a.name+' 的目标'+p.name+'在毒圈外（引擎照常执行）',RC(a));wake(a,'目标领地在圈外')}
   if(c.t=='defend'&&((p.capBy<0&&!raidMons(p).length)||a.cmdT>30)){next();break}
   if(c.t=='hunt'&&((a.huntN||0)>=c.n||a.cmdT>45)){a.huntN=0;next();break}
   if(!inP){moveTo(a,Math.round(p.cx),Math.round(p.cy),dt,S);break}
   if(engaged){if(dist(a,engaged)>range(a))moveTo(a,Math.round(engaged.x),Math.round(engaged.y),dt,S);break}
   let tg=null;if(c.t=='capture'){const hs=hires(p);const P=a.m.per;
    if(hs.length&&c.bribe==null&&a.ext){c.bribe=false}if(hs.length&&c.bribe==null){const bc=bribeCost(a);const can=a.gold>=bc*Math.min(hs.length,3);c.bribe=can&&R()<.12+P.diplo*.45+P.econ*.25+a.st[4]*.03-P.aggr*.25;
-    log('c-cap',c.bribe?'💰 '+a.name+' 决定收买'+p.name+'的 '+hs.length+' 名守卫（每人约 '+bc+' 金）':'⚔ '+a.name+' 决定强攻'+p.name+'的 '+hs.length+' 名守卫');say(a,c.bribe?'能花钱解决的事，不动刀。':hs.length+'个守卫，硬打进去。')}
+    log('c-cap',c.bribe?'💰 '+a.name+' 决定收买'+p.name+'的 '+hs.length+' 名守卫（每人约 '+bc+' 金）':'⚔ '+a.name+' 决定强攻'+p.name+'的 '+hs.length+' 名守卫',RC(a));say(a,c.bribe?'能花钱解决的事，不动刀。':hs.length+'个守卫，硬打进去。')}
    if(c.bribe&&hs.length){const g=hs.sort((x,y)=>dist(a,x)-dist(a,y))[0];const bc=bribeCost(a);a.brT=(a.brT||0)-dt;
-    if(a.gold<bc){c.bribe=false;say(a,'钱不够了，剩下的硬打。');log('c-cap','💸 '+a.name+' 钱花光了，改为强攻')}
+    if(a.gold<bc){c.bribe=false;say(a,'钱不够了，剩下的硬打。');log('c-cap','💸 '+a.name+' 钱花光了，改为强攻',RC(a))}
     else if(dist(a,g)>1.4)moveTo(a,Math.round(g.x),Math.round(g.y),dt,S);
-    else if(a.brT<=0){a.brT=1.2;plotAttacked(p,a);const ch=Math.min(.9,.4+a.st[4]*.05);if(R()<ch){a.gold-=bc;g.gone=1;g.dead=1;STAT.bribe++;sparks(g.x,g.y,'#ffd166',10);fx.push({x:g.x,y:g.y,t:1,txt:'收买 -'+bc,c:'#ffd166'});log('c-cap','🤝 '+a.name+' 花 '+bc+' 金收买了 '+agents[g.owner].name+' 的守卫，对方离岗（还剩 '+(hs.length-1)+' 名）');wake(agents[g.owner],'守卫被收买')}
-     else{const lost=Math.round(bc/2);a.gold-=lost;g.angry=a.id;STAT.bribeFail++;fx.push({x:g.x,y:g.y,t:1,txt:'拒绝!',c:'#ff5252'});log('c-cap','✋ '+agents[g.owner].name+' 的守卫收了 '+a.name+' '+lost+' 金却翻脸拔刀');say(a,'拿钱不办事？那就打。')}}
+    else if(a.brT<=0){a.brT=1.2;plotAttacked(p,a);const ch=Math.min(.9,.4+a.st[4]*.05);if(R()<ch){a.gold-=bc;g.gone=1;g.dead=1;STAT.bribe++;sparks(g.x,g.y,'#ffd166',10);fx.push({x:g.x,y:g.y,t:1,txt:'收买 -'+bc,c:'#ffd166'});log('c-cap','🤝 '+a.name+' 花 '+bc+' 金收买了 '+agents[g.owner].name+' 的守卫，对方离岗（还剩 '+(hs.length-1)+' 名）',RC(a));notifyAgent(agents[g.owner],'守卫被收买','你在'+p.name+'（领地 '+p.id+'）的一名守卫被'+(sees(agents[g.owner],a)?a.name:'人')+'收买离岗，还剩 '+(hs.length-1)+' 名',{plotId:p.id})}
+     else{const lost=Math.round(bc/2);a.gold-=lost;g.angry=a.id;STAT.bribeFail++;fx.push({x:g.x,y:g.y,t:1,txt:'拒绝!',c:'#ff5252'});log('c-cap','✋ '+agents[g.owner].name+' 的守卫收了 '+a.name+' '+lost+' 金却翻脸拔刀',RC(a));say(a,'拿钱不办事？那就打。')}}
     break}
    tg=hs.find(m=>!bribing(a,m))||mons.find(m=>m.guard==p.id&&!m.dead&&!m.hire)}if(c.t=='defend'&&p.capBy>=0&&sees(a,agents[p.capBy]))tg=agents[p.capBy];
   if(!tg&&c.t!='capture')tg=mons.filter(m=>!m.dead&&!m.hire&&plotAt(m.x,m.y)==p).sort((x,y)=>dist(a,x)-dist(a,y))[0];
@@ -1009,7 +1013,7 @@ function showIntro(){paused=true;started=false;let h='<table><tr><th>形象</th>
  document.getElementById('introBody').innerHTML='<p class="mini" style="margin-bottom:6px">每个模型按「绘制规范」提交 32×32 分层像素 JSON，引擎校验后再合成装备层、描边、走路帧和挥砍动作。这 8 个形象是按规范制作的样例，接入真实模型后由各模型自己绘制。</p>'+h+'</table><p class="mini" style="margin-top:6px">320×320 大地图（5×5 格，中间一格是城镇和郊外村落，其余 24 块是可占领领地），单局 15 分钟，最多 8 个出生点在外圈，开局彼此看不见。结盟必须当面谈：先走到对方身边，对方也要在附近才会答应。8 个行商在各地游走，遇到野怪会逃跑、呼救；模型自己决定救不救，救下有报酬，会挑远离怪窝的地方出摊 60–90 秒，再换地方；出摊、委托、导师行踪、空投都会贴在公告板上。弱怪成群、强怪独行，打怪有小概率掉装备。地图中央是有城墙的城区（安全区，城里不能 PvP，野怪不进城）：酒馆老板娘卖消息（奸商身份、谁最有钱、哪块地守卫最少），铁匠修理阵亡损坏的装备、把武器升到稀有，旅店住店回满，神殿祝福可免一次阵亡惩罚，公会出售领地守备情报；居民和城卫会在城里闲聊最新战况。进不进城、找谁谈，由模型自己决定。其中藏着一个奸商：它只在恩人身上有武器、护甲或 60 金以上时才动心，动手概率约 60%，不是每次都捅。<br>占下领地后可花 35 金/名招募守卫，每块领地 16 格（每格 16×16），守卫上限为格数一半即 8 名。攻占别人的领地，要先击退或收买全部守卫；领主不会自动知道领地被攻，除非亲眼看到，或者按自己下的命令派守卫来报信；魅力越高，收买越便宜、越容易成功，失败会被坑走一半钱。<br>阵亡：掉 30% 金币、当前经验的一半（不掉级），并有 12% 概率损坏一件装备。升级得 2 点属性，由模型在下次思考时分配。</p>';
  document.querySelectorAll('#introBody canvas').forEach(c=>portraitTo(c,agents[c.dataset.i]));document.getElementById('intro').style.display='flex'}
 function fillSlots(){document.getElementById('impSlot').innerHTML=agents.map(a=>'<option value="'+escapeHTML(a.id)+'">'+escapeHTML(a.name)+'</option>').join('')}
-function go(){agents.forEach(a=>{if(!a.ext)simHabits(a)});document.getElementById('intro').style.display='none';paused=false;started=true;document.getElementById('bPause').textContent='暂停';agents.forEach(a=>wake(a,'开局'));log('c-think','📣 比赛开始！6 个模型在地图外圈出生，各自开始思考第一份计划')}
+function go(){agents.forEach(a=>{if(!a.ext)simHabits(a)});document.getElementById('intro').style.display='none';paused=false;started=true;document.getElementById('bPause').textContent='暂停';agents.forEach(a=>wake(a,'开局'));log('c-think','📣 比赛开始！6 个模型在地图外圈出生，各自开始思考第一份计划',RALL())}
 const $=id=>document.getElementById(id);
 $('specText').textContent=SPEC_TEXT;
 (function(){const L=$('left'),Rr=$('right'),app=$('app'),ids=['board','lhd','log'],rids=['rhd','cards','detail'];const mq=matchMedia('(min-width:1100px)');function lay(){if(mq.matches){ids.forEach(i=>L.appendChild($(i)));rids.forEach(i=>Rr.appendChild($(i)))}else{['board','rhd','cards','detail','lhd','log'].forEach(i=>app.appendChild($(i)))}}lay();(mq.addEventListener?mq.addEventListener('change',lay):mq.addListener(lay))})();

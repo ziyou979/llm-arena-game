@@ -8,7 +8,7 @@ global.els={};
 global.document={getElementById:id=>id=='spritesJSON'?{textContent:sprites}:(els[id]||(els[id]=stub())),createElement:()=>stub(),querySelectorAll:()=>[],querySelector:()=>stub(),addEventListener(){},body:stub()};
 global.window=global;global.addEventListener=()=>{};global.requestAnimationFrame=()=>0;global.innerWidth=400;global.innerHeight=800;global.devicePixelRatio=1;global.localStorage={getItem:()=>null,setItem(){}};global.matchMedia=()=>({matches:false,addEventListener(){}});global.Image=function(){return stub()};
 global.alert=m=>console.log('ALERT',m);global.confirm=()=>true;
-window.ARENA_BRIDGE='http://127.0.0.1:1';
+window.ARENA_BRIDGE='http://127.0.0.1:1';window.ARENA_BRIDGE_KEY=process.env.ARENA_BRIDGE_KEY||(()=>{try{return require('fs').readFileSync(require('path').join(__dirname,'..','.arena-hostkey'),'utf8').trim()}catch(e){return ''}})();
 const code=scripts.join('\n')+'\n'+fs.readFileSync(__dirname+'/../bridge.js','utf8')+'\n'+fs.readFileSync(__dirname+'/../replay.js','utf8')+'\n;globalThis.__E={step:s=>step(s),go:()=>go(),st:()=>({time,over,started}),agents:()=>agents,mons:()=>mons,render:()=>render(),ui:()=>ui(),setT:t=>{}};';
 (0,eval)(code);
 window.ARENA_NOREC=!!process.env.NOREC;[0,2,3,5,6,7].forEach((s,k)=>addSim(s,[0,2,3,5,6,7][k],''));__E.go();
